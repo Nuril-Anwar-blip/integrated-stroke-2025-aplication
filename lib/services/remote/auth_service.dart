@@ -29,32 +29,6 @@ class AuthService {
     }
   }
 
-  Future<AuthResponse> createAdminUser(String email, String password) async {
-    final authResponse = await _supabase.auth.signUp(
-      email: email,
-      password: password,
-    );
-
-    if (authResponse.user != null) {
-      final userId = authResponse.user!.id;
-      final profileData = {
-        'id': userId,
-        'email': email,
-        'full_name': 'Admin',
-        'role': 'admin',
-      };
-      try {
-        await _supabase.from('users').insert(profileData);
-      } catch (_) {}
-      try {
-        await _supabase.from('admins').upsert({'user_id': userId});
-      } catch (_) {}
-      await AuthLocalService.setLoggedIn(true);
-    }
-
-    return authResponse;
-  }
-
   /// Register user. If signUp returns a session, insert profile immediately.
   /// If signUp does not return a session (email confirmation flow), save pending
   /// profile locally and insert after the user logs in.
@@ -68,37 +42,41 @@ class AuthService {
         : 'pasien';
 
     try {
-      if (role == 'apoteker') {
-        try {
-          final codeResponse = await _supabase
-              .from('pharmacist_invitations')
-              .select('id, expires_at')
-              .eq('code', pharmacistCode!)
-              .eq('is_used', false)
-              .maybeSingle();
+      dynamic invitationId;
+      final String? trimmedCode = pharmacistCode?.trim();
+      if (role == 'apoteker' && trimmedCode != null && trimmedCode.isNotEmpty) {
+        Map<String, dynamic>? invitation;
+        final candidateColumns = <String>[
+          'code',
+          'token',
+          'invite_code',
+          'admin_token',
+          'kode',
+          'kode_token',
+          'registration_code',
+        ];
 
-          if (codeResponse == null) {
-            throw Exception(
-              'Kode registrasi apoteker tidak valid atau sudah digunakan.',
-            );
-          }
-
-          final expiresAtStr = codeResponse['expires_at'] as String?;
-          if (expiresAtStr != null) {
-            final expiresAt = DateTime.parse(expiresAtStr);
-            if (expiresAt.isBefore(DateTime.now().toUtc())) {
-              throw Exception('Kode registrasi apoteker sudah kedaluwarsa.');
+        for (final col in candidateColumns) {
+          try {
+            final List<dynamic> rows = await _supabase
+                .from('pharmacist_invitations')
+                .select('id')
+                .eq(col, trimmedCode)
+                .eq('is_used', false)
+                .limit(1);
+            if (rows.isNotEmpty) {
+              invitation = Map<String, dynamic>.from(rows.first as Map);
+              break;
             }
-          }
-        } catch (e) {
-          final msg = e.toString().toLowerCase();
-          if (msg.contains('permission denied') || msg.contains('rls')) {
-            throw Exception(
-              'Kode tidak bisa diverifikasi: kebijakan RLS Supabase belum mengizinkan SELECT untuk undangan yang belum dipakai.',
-            );
-          }
-          rethrow;
+          } catch (_) {}
         }
+
+        if (invitation == null) {
+          throw Exception(
+            'Kode registrasi apoteker tidak valid atau sudah digunakan.',
+          );
+        }
+        invitationId = invitation['id'];
       }
 
       final authResponse = await _supabase.auth.signUp(
@@ -114,15 +92,39 @@ class AuthService {
           // session available -> can insert now
           profileData['id'] = authResponse.user!.id;
           await _supabase.from('users').insert(profileData);
-          if (role == 'apoteker' && pharmacistCode != null) {
-            await _supabase
-                .from('pharmacist_invitations')
-                .update({
-                  'is_used': true,
-                  'used_by': authResponse.user!.id,
-                  'used_at': DateTime.now().toUtc().toIso8601String(),
-                })
-                .eq('code', pharmacistCode);
+          if (role == 'apoteker' &&
+              trimmedCode != null &&
+              trimmedCode.isNotEmpty) {
+            if (invitationId != null) {
+              try {
+                await _supabase
+                    .from('pharmacist_invitations')
+                    .update({'is_used': true})
+                    .eq('id', invitationId);
+              } catch (_) {}
+            } else {
+              for (final col in [
+                'code',
+                'token',
+                'invite_code',
+                'admin_token',
+                'kode',
+                'kode_token',
+                'registration_code',
+              ]) {
+                try {
+                  final updated = await _supabase
+                      .from('pharmacist_invitations')
+                      .update({'is_used': true})
+                      .eq(col, trimmedCode)
+                      .eq('is_used', false)
+                      .select();
+                  if (updated is List && updated.isNotEmpty) {
+                    break;
+                  }
+                } catch (_) {}
+              }
+            }
           }
           await AuthLocalService.setLoggedIn(true);
         } else {

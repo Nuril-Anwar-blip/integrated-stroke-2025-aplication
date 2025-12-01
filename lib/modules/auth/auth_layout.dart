@@ -8,12 +8,16 @@ class AuthLayout extends StatelessWidget {
   final String desc;
   final Widget formField;
   final double marginTop;
+  final bool showBackButton;
+  final VoidCallback? onBack;
   const AuthLayout({
     super.key,
     required this.title,
     required this.desc,
     required this.formField,
     required this.marginTop,
+    this.showBackButton = false,
+    this.onBack,
   });
 
   @override
@@ -21,9 +25,23 @@ class AuthLayout extends StatelessWidget {
     final viewInsets = MediaQuery.viewInsetsOf(context).bottom;
 
     return BaseScreen(
+      appBar: showBackButton
+          ? AppBar(
+              leading: IconButton(
+                icon: const Icon(Icons.arrow_back_ios_new_rounded),
+                onPressed: onBack ?? () => Navigator.pop(context),
+              ),
+              backgroundColor: Colors.transparent,
+              elevation: 0,
+              foregroundColor: Colors.white,
+            )
+          : null,
+      backgroundColor: Colors.transparent,
+      extendBodyBehindAppBar: true,
       resizeToAvoidBottomInset: true,
       horizontalPadding: 0,
       body: Container(
+        constraints: const BoxConstraints.expand(),
         decoration: const BoxDecoration(
           gradient: LinearGradient(
             colors: [Color(0xFF0A7AC1), Color(0xFF0E5FAF), Color(0xFF113A73)],

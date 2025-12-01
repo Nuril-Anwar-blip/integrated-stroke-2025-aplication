@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'auth_layout.dart';
 import 'register_patient_screen.dart';
 import 'register_pharmacist_screen.dart';
+import 'login_screen.dart';
 
 class RegisterScreen extends StatelessWidget {
   const RegisterScreen({super.key});
@@ -14,6 +15,11 @@ class RegisterScreen extends StatelessWidget {
       desc:
           'Daftar sebagai pasien untuk memantau terapi atau sebagai apoteker untuk membantu pasien.',
       marginTop: 60,
+      showBackButton: true,
+      onBack: () => Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (_) => const LoginScreen()),
+      ),
       formField: Column(
         children: [
           _RoleCard(
@@ -41,6 +47,7 @@ class RegisterScreen extends StatelessWidget {
               ),
             ),
           ),
+          const SizedBox(height: 20),
         ],
       ),
     );

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../register_screen.dart';
+import '../login_screen.dart';
 
 class AuthRedirectText extends StatelessWidget {
   final bool isLogin;
@@ -24,7 +25,12 @@ class AuthRedirectText extends StatelessWidget {
                     builder: (BuildContext context) => const RegisterScreen(),
                   ),
                 )
-              : () => Navigator.pop(context),
+              : () => Navigator.pushReplacement(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const LoginScreen(),
+                    ),
+                  ),
           child: Text(
             isLogin ? "Register" : "Login",
             style: const TextStyle(

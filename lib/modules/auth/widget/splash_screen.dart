@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../pharmacist/dashboard/apoteker_dashboard_screen.dart';
+import '../../dashboard/dashboard_screen.dart';
 import '../../admin/admin_dashboard_screen.dart';
-import '../../dashboard/dashboard_screen.dart'; // Halaman utama pasien (radial menu)
 import '../login_screen.dart';
 
 class SplashScreen extends StatefulWidget {
@@ -36,46 +36,37 @@ class _SplashScreenState extends State<SplashScreen> {
     }
 
     try {
-      final client = Supabase.instance.client;
-      final userId = session.user.id;
-
-      final userRow = await client
+      // Ambil data profil, kh ususnya kolom 'role'
+      final response = await Supabase.instance.client
           .from('users')
           .select('role')
-          .eq('id', userId)
+          .eq('id', session.user.id)
           .maybeSingle();
 
-      String? role = userRow != null ? userRow['role'] as String? : null;
-
-      if (role == null) {
-        final adminRow = await client
-            .from('admins')
-            .select('user_id')
-            .eq('user_id', userId)
-            .maybeSingle();
-        if (adminRow != null) role = 'admin';
-      }
+      final role = response == null ? null : response['role'] as String?;
 
       if (!mounted) return;
 
-      if (role == 'admin') {
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (_) => const AdminDashboardScreen()),
-        );
-      } else if (role == 'apoteker') {
+      if (role == 'apoteker') {
+        // Jika apoteker, arahkan ke Dashboard Apoteker
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(builder: (_) => const ApotekerDashboardScreen()),
         );
+      } else if (role == 'admin') {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => const AdminDashboardScreen()),
+        );
       } else {
+        // Jika bukan (pasien atau lainnya), arahkan ke Dashboard Pasien
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(builder: (_) => const DashboardScreen()),
         );
       }
     } catch (e) {
-      if (!mounted) return;
+      // Jika gagal mengambil profil (misal, profil belum dibuat/RLS), arahkan ke Dashboard default
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(builder: (_) => const DashboardScreen()),

@@ -8,6 +8,7 @@ class BaseScreen extends StatelessWidget {
   final bool resizeToAvoidBottomInset;
   final double? horizontalPadding;
   final bool useSafeArea;
+  final bool extendBodyBehindAppBar;
   const BaseScreen({
     super.key,
     this.appBar,
@@ -17,12 +18,15 @@ class BaseScreen extends StatelessWidget {
     this.resizeToAvoidBottomInset = false,
     this.horizontalPadding,
     this.useSafeArea = false,
+    this.extendBodyBehindAppBar = false,
   });
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       resizeToAvoidBottomInset: resizeToAvoidBottomInset,
+      backgroundColor: backgroundColor,
+      extendBodyBehindAppBar: extendBodyBehindAppBar,
       appBar: appBar,
       drawer: drawer,
       body: useSafeArea

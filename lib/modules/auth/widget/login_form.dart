@@ -71,27 +71,6 @@ class _LoginFormState extends State<LoginForm> {
       }
     } catch (e) {
       if (mounted) Navigator.of(context).pop();
-      final email = _emailController.text.trim();
-      final password = _passwordController.text.trim();
-      if (email.toLowerCase() == 'admin@gmail.com' && password == 'admin123') {
-        try {
-          showDialog(
-            context: context,
-            barrierDismissible: false,
-            builder: (_) => const PopUpLoading(),
-          );
-          final response = await _authService.createAdminUser(email, password);
-          if (!mounted) return;
-          Navigator.of(context).pop();
-          if (response.user != null) {
-            Navigator.pushReplacement(
-              context,
-              MaterialPageRoute(builder: (_) => const SplashScreen()),
-            );
-            return;
-          }
-        } catch (_) {}
-      }
       log(e.toString());
       if (mounted)
         ScaffoldMessenger.of(

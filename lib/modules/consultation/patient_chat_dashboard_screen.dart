@@ -5,7 +5,7 @@ import 'package:intl/intl.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'consultation_screen.dart';
-import '../auth/login_screen.dart';
+// import '../auth/login_screen.dart';
 
 class ChatRoomInfo {
   const ChatRoomInfo({
@@ -19,8 +19,8 @@ class ChatRoomInfo {
 
   factory ChatRoomInfo.fromMap(Map<String, dynamic> map) {
     return ChatRoomInfo(
-      roomId: map['room_id'],
-      pharmacistId: map['pharmacist_id'],
+      roomId: map['room_id']?.toString() ?? '',
+      pharmacistId: map['pharmacist_id']?.toString() ?? '',
       pharmacistName: map['pharmacist_full_name'] ?? 'Apoteker',
       pharmacistAvatarUrl: map['pharmacist_photo_url'] ?? '',
       lastMessage: map['last_message_content'],
@@ -145,7 +145,7 @@ class _PatientChatDashboardScreenState
         final List<dynamic> pharmacists = await _supabase
             .from('users')
             .select('id, full_name, photo_url')
-            .contains('id', pharmacistIds);
+            .filter('id', 'in', pharmacistIds);
         for (final raw in pharmacists) {
           final map = Map<String, dynamic>.from(raw as Map);
           final id = map['id']?.toString();
@@ -193,7 +193,7 @@ class _PatientChatDashboardScreenState
     final List<dynamic> rows = await _supabase
         .from('messages')
         .select('room_id, content, created_at')
-        .contains('room_id', roomIds)
+        .filter('room_id', 'in', roomIds)
         .order('created_at', ascending: false);
 
     final latest = <String, Map<String, dynamic>>{};
@@ -265,10 +265,11 @@ class _PatientChatDashboardScreenState
   }
 
   Future<List<_PharmacistSummary>> _fetchPharmacists() async {
+    final roles = ['apoteker', 'Apoteker', 'pharmacist', 'Pharmacist'];
     final rows = await _supabase
         .from('users')
         .select('id, full_name, photo_url')
-        .eq('role', 'apoteker')
+        .filter('role', 'in', roles)
         .order('full_name');
     return rows
         .map<_PharmacistSummary>(
@@ -330,16 +331,16 @@ class _PatientChatDashboardScreenState
           .maybeSingle();
 
       final roomId = existing != null
-          ? existing['id'] as String
-          : (await _supabase
+          ? (existing['id']?.toString() ?? '')
+          : ((await _supabase
                     .from('chat_rooms')
                     .insert({
                       'patient_id': currentUser.id,
                       'pharmacist_id': pharmacist.id,
                     })
                     .select('id')
-                    .single())['id']
-                as String;
+                    .single())['id'])
+                .toString();
 
       if (!mounted) return;
       await Navigator.push(
@@ -361,15 +362,7 @@ class _PatientChatDashboardScreenState
     }
   }
 
-  Future<void> _logout() async {
-    await _supabase.auth.signOut();
-    if (!mounted) return;
-    Navigator.pushAndRemoveUntil(
-      context,
-      MaterialPageRoute(builder: (_) => const LoginScreen()),
-      (_) => false,
-    );
-  }
+  // Logout dihapus sesuai permintaan
 
   @override
   Widget build(BuildContext context) {
@@ -384,11 +377,6 @@ class _PatientChatDashboardScreenState
           style: TextStyle(fontWeight: FontWeight.w700),
         ),
         actions: [
-          IconButton(
-            tooltip: 'Logout',
-            icon: const Icon(Icons.logout),
-            onPressed: _logout,
-          ),
           if (_isRefreshing)
             const Padding(
               padding: EdgeInsets.only(right: 12),
