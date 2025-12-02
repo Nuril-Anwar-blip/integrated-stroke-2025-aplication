@@ -262,6 +262,29 @@ class _EmergencyLocationScreenState extends State<EmergencyLocationScreen> {
     }
   }
 
+  Future<void> _routeToNearest() async {
+    try {
+      if (_places.isEmpty) {
+        await _fetchHospitalsGuaranteed();
+      }
+      if (_places.isEmpty) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Tidak ditemukan RS terdekat')),
+          );
+        }
+        return;
+      }
+      await _openGoogleMaps(_places.first.location);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Gagal membuka rute: $e')),
+        );
+      }
+    }
+  }
+
   // =============================================================
   @override
   Widget build(BuildContext context) {
@@ -329,6 +352,15 @@ class _EmergencyLocationScreenState extends State<EmergencyLocationScreen> {
                 },
               ),
             ),
+          Positioned(
+            right: 16,
+            bottom: _places.isNotEmpty ? 270 : 16,
+            child: FloatingActionButton.extended(
+              onPressed: _routeToNearest,
+              icon: const Icon(Icons.navigation_rounded),
+              label: const Text('Rute RS Terdekat'),
+            ),
+          ),
         ],
       ),
     );

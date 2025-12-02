@@ -1,8 +1,21 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+
+bool _isImageUrl(String url) {
+  final lower = url.toLowerCase();
+  return lower.endsWith('.png') ||
+      lower.endsWith('.jpg') ||
+      lower.endsWith('.jpeg') ||
+      lower.endsWith('.webp') ||
+      lower.contains('image');
+}
 
 class ChatMessage {
   const ChatMessage({
@@ -10,6 +23,7 @@ class ChatMessage {
     required this.content,
     required this.senderId,
     required this.createdAt,
+    this.metadata,
   });
 
   factory ChatMessage.fromMap(Map<String, dynamic> map) {
@@ -18,6 +32,10 @@ class ChatMessage {
       content: map['content'] ?? '',
       senderId: map['sender_id'],
       createdAt: DateTime.parse(map['created_at']),
+      // Metadata dari kolom jsonb untuk lampiran (gambar/dokumen)
+      metadata: map['metadata'] is Map
+          ? Map<String, dynamic>.from(map['metadata'] as Map)
+          : null,
     );
   }
 
@@ -25,6 +43,7 @@ class ChatMessage {
   final String content;
   final String senderId;
   final DateTime createdAt;
+  final Map<String, dynamic>? metadata;
 }
 
 class ConsultationScreen extends StatefulWidget {
@@ -51,6 +70,7 @@ class _ConsultationScreenState extends State<ConsultationScreen> {
   late final SupabaseClient _supabase;
   late final Stream<List<ChatMessage>> _messagesStream;
   String? _currentUserId;
+  String? _recipientPhone;
 
   @override
   void initState() {
@@ -67,6 +87,8 @@ class _ConsultationScreenState extends State<ConsultationScreen> {
               .map((row) => ChatMessage.fromMap(row as Map<String, dynamic>))
               .toList(),
         );
+    // Ambil nomor telepon penerima untuk fitur panggilan
+    _loadRecipientPhone();
   }
 
   @override
@@ -101,6 +123,146 @@ class _ConsultationScreenState extends State<ConsultationScreen> {
     } finally {
       _isSending.value = false;
     }
+  }
+
+  // Ambil nomor telepon penerima dari tabel users
+  Future<void> _loadRecipientPhone() async {
+    try {
+      final row = await _supabase
+          .from('users')
+          .select('phone_number')
+          .eq('id', widget.recipientId)
+          .maybeSingle();
+      if (row != null) {
+        setState(() => _recipientPhone = row['phone_number']?.toString());
+      }
+    } catch (_) {}
+  }
+
+  // Kirim lampiran gambar: unggah ke Storage dan simpan URL pada metadata pesan
+  Future<void> _pickAndSendPhoto() async {
+    if (_currentUserId == null) return;
+    final picker = ImagePicker();
+    try {
+      final picked = await picker.pickImage(
+        source: ImageSource.gallery,
+        imageQuality: 85,
+      );
+      if (picked == null) return;
+
+      _isSending.value = true;
+      final file = File(picked.path);
+      final ext = picked.name.split('.').last.toLowerCase();
+      // Gunakan bucket khusus chat: 'chat_attachments'
+      final bucket = 'chat_attachments';
+      final objectPath =
+          '${_currentUserId}/${DateTime.now().millisecondsSinceEpoch}_${picked.name}';
+
+      await _supabase.storage.from(bucket).upload(objectPath, file);
+      final publicUrl = _supabase.storage.from(bucket).getPublicUrl(objectPath);
+
+      try {
+        await _supabase.from('messages').insert({
+          'room_id': widget.roomId,
+          'sender_id': _currentUserId,
+          'content': '',
+          'metadata': {
+            'type': 'image',
+            'url': publicUrl,
+            'name': picked.name,
+            'size': await file.length(),
+          },
+        });
+      } catch (_) {
+        // Fallback bila kolom 'metadata' tidak ada: kirim URL sebagai content
+        await _supabase.from('messages').insert({
+          'room_id': widget.roomId,
+          'sender_id': _currentUserId,
+          'content': publicUrl,
+        });
+      }
+      _scrollToBottom();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Gagal mengirim foto: $e')));
+    } finally {
+      _isSending.value = false;
+    }
+  }
+
+  // Kirim lampiran dokumen umum
+  Future<void> _pickAndSendFile() async {
+    if (_currentUserId == null) return;
+    try {
+      final result = await FilePicker.platform.pickFiles(withReadStream: false);
+      if (result == null || result.files.isEmpty) return;
+      final f = result.files.first;
+      if (f.path == null) return;
+
+      _isSending.value = true;
+      final file = File(f.path!);
+      final ext = (f.extension ?? 'bin').toLowerCase();
+      // Gunakan bucket khusus chat: 'chat_attachments'
+      final bucket = 'chat_attachments';
+      final objectPath =
+          '${_currentUserId}/${DateTime.now().millisecondsSinceEpoch}_${f.name}';
+
+      await _supabase.storage.from(bucket).upload(objectPath, file);
+      final publicUrl = _supabase.storage.from(bucket).getPublicUrl(objectPath);
+
+      try {
+        await _supabase.from('messages').insert({
+          'room_id': widget.roomId,
+          'sender_id': _currentUserId,
+          'content': f.name,
+          'metadata': {
+            'type': 'file',
+            'url': publicUrl,
+            'name': f.name,
+            'size': f.size,
+            'ext': ext,
+          },
+        });
+      } catch (_) {
+        // Fallback bila kolom 'metadata' tidak ada: kirim nama + URL sebagai content
+        await _supabase.from('messages').insert({
+          'room_id': widget.roomId,
+          'sender_id': _currentUserId,
+          'content': '${f.name} | ${publicUrl}',
+        });
+      }
+      _scrollToBottom();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Gagal mengirim dokumen: $e')));
+    } finally {
+      _isSending.value = false;
+    }
+  }
+
+  // Lakukan panggilan telepon menggunakan nomor penerima bila tersedia
+  Future<void> _startPhoneCall() async {
+    final phone = _recipientPhone?.trim();
+    if (phone == null || phone.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Nomor telepon penerima tidak tersedia')),
+      );
+      return;
+    }
+    final uri = Uri.parse('tel:${phone.replaceAll(' ', '')}');
+    await launchUrl(uri);
+  }
+
+  // Buka ruang video call berbasis Jitsi menggunakan roomId
+  Future<void> _startVideoCall() async {
+    final url = Uri.parse(
+      'https://meet.jit.si/integrated_strokes_${widget.roomId}',
+    );
+    await launchUrl(url, mode: LaunchMode.externalApplication);
   }
 
   void _scrollToBottom() {
@@ -179,12 +341,12 @@ class _ConsultationScreenState extends State<ConsultationScreen> {
         actions: [
           IconButton(
             tooltip: 'Telepon',
-            onPressed: () {},
+            onPressed: _startPhoneCall,
             icon: const Icon(Icons.call),
           ),
           IconButton(
             tooltip: 'Video call',
-            onPressed: () {},
+            onPressed: _startVideoCall,
             icon: const Icon(Icons.videocam_rounded),
           ),
         ],
@@ -338,12 +500,16 @@ class _MessageComposer extends StatelessWidget {
           children: [
             IconButton(
               tooltip: 'Lampirkan foto',
-              onPressed: () {},
+              onPressed:
+                  (context.findAncestorStateOfType<_ConsultationScreenState>())
+                      ?._pickAndSendPhoto,
               icon: Icon(Icons.photo_outlined, color: Colors.teal.shade600),
             ),
             IconButton(
               tooltip: 'Lampirkan dokumen',
-              onPressed: () {},
+              onPressed:
+                  (context.findAncestorStateOfType<_ConsultationScreenState>())
+                      ?._pickAndSendFile,
               icon: Icon(
                 Icons.attach_file_rounded,
                 color: Colors.teal.shade600,
@@ -405,6 +571,8 @@ class _MessageBubble extends StatelessWidget {
     final bubbleColor = isSender ? Colors.teal.shade100 : Colors.white;
     final alignment = isSender ? Alignment.centerRight : Alignment.centerLeft;
     final textColor = isSender ? Colors.teal.shade900 : Colors.grey.shade900;
+    final meta = message.metadata;
+    final content = message.content;
 
     return Align(
       alignment: alignment,
@@ -439,10 +607,59 @@ class _MessageBubble extends StatelessWidget {
               ? CrossAxisAlignment.end
               : CrossAxisAlignment.start,
           children: [
-            Text(
-              message.content,
-              style: TextStyle(color: textColor, fontSize: 15, height: 1.4),
-            ),
+            if (meta != null &&
+                meta['type'] == 'image' &&
+                (meta['url']?.toString().isNotEmpty ?? false))
+              ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: Image.network(
+                  meta['url'] as String,
+                  fit: BoxFit.cover,
+                  width: MediaQuery.of(context).size.width * 0.7,
+                ),
+              ),
+            if (meta != null &&
+                meta['type'] == 'file' &&
+                (meta['url']?.toString().isNotEmpty ?? false))
+              InkWell(
+                onTap: () async {
+                  final url = Uri.parse(meta['url'] as String);
+                  await launchUrl(url, mode: LaunchMode.externalApplication);
+                },
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.insert_drive_file, size: 18),
+                    const SizedBox(width: 6),
+                    Flexible(
+                      child: Text(
+                        (meta['name']?.toString().isNotEmpty ?? false)
+                            ? meta['name'] as String
+                            : 'Lampiran',
+                        style: TextStyle(color: textColor, fontSize: 14),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            // Fallback render: jika content adalah URL gambar, tampilkan gambar.
+            if (content.trim().isNotEmpty &&
+                Uri.tryParse(content)?.hasAbsolutePath == true &&
+                _isImageUrl(content))
+              ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: Image.network(
+                  content,
+                  fit: BoxFit.cover,
+                  width: MediaQuery.of(context).size.width * 0.7,
+                ),
+              )
+            else if (content.trim().isNotEmpty)
+              Text(
+                content,
+                style: TextStyle(color: textColor, fontSize: 15, height: 1.4),
+              ),
             const SizedBox(height: 6),
             Row(
               mainAxisSize: MainAxisSize.min,

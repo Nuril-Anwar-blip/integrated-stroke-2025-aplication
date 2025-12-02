@@ -23,6 +23,8 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   int _activeChatRooms = 0;
   int _totalReminders = 0;
   List<Map<String, dynamic>> _latestChats = [];
+  bool _isAdmin = false;
+  String? _errorMessage;
 
   @override
   void initState() {
@@ -41,25 +43,34 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   Future<void> _loadAll() async {
     setState(() => _loading = true);
     try {
+      final uid = _supabase.auth.currentUser?.id;
+      if (uid != null) {
+        final exists = await _supabase
+            .from('admins')
+            .select('user_id')
+            .eq('user_id', uid)
+            .limit(1);
+        _isAdmin = exists is List && exists.isNotEmpty;
+      } else {
+        _isAdmin = false;
+      }
       final tokens = await _supabase
           .from('pharmacist_invitations')
           .select('id, code, is_used, created_at')
           .eq('is_used', false)
           .order('created_at', ascending: false);
+      // Gunakan filter 'or' agar kompatibel dengan variasi nilai role
       final pharm = await _supabase
           .from('users')
           .select('id, full_name, email, photo_url')
-          .filter('role', 'in', [
-            'apoteker',
-            'Apoteker',
-            'pharmacist',
-            'Pharmacist',
-          ])
+          .or(
+            'role.eq.apoteker,role.eq.Apoteker,role.eq.pharmacist,role.eq.Pharmacist',
+          )
           .order('full_name');
       final pats = await _supabase
           .from('users')
           .select('id, full_name, email, photo_url')
-          .filter('role', 'in', ['pasien', 'Pasien', 'patient', 'Patient'])
+          .or('role.eq.pasien,role.eq.Pasien,role.eq.patient,role.eq.Patient')
           .order('full_name');
       final rooms = await _supabase.from('chat_rooms').select('id');
       final reminders = await _supabase
@@ -78,7 +89,11 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       _activeChatRooms = (rooms as List).length;
       _totalReminders = (reminders as List).length;
       await _loadLatestChats();
-    } catch (_) {}
+      _errorMessage = null;
+    } catch (e) {
+      _errorMessage =
+          'Tidak bisa memuat data admin. Periksa akses admin dan kebijakan RLS.';
+    }
     if (mounted) setState(() => _loading = false);
   }
 
@@ -244,6 +259,11 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
         title: const Text('Dashboard Admin'),
         actions: [
           IconButton(
+            tooltip: 'Segarkan',
+            onPressed: () => _loadAll(),
+            icon: const Icon(Icons.refresh_rounded),
+          ),
+          IconButton(
             onPressed: () async {
               await Supabase.instance.client.auth.signOut();
               if (!mounted) return;
@@ -262,6 +282,31 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
         child: ListView(
           padding: const EdgeInsets.all(16),
           children: [
+            if (!_isAdmin || _errorMessage != null)
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.red.shade50,
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.error_outline, color: Colors.red),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        _errorMessage ??
+                            'Akun ini tidak memiliki hak akses admin.',
+                        style: const TextStyle(color: Colors.red),
+                      ),
+                    ),
+                    TextButton(
+                      onPressed: _loadAll,
+                      child: const Text('Coba lagi'),
+                    ),
+                  ],
+                ),
+              ),
             Row(
               children: [
                 Expanded(

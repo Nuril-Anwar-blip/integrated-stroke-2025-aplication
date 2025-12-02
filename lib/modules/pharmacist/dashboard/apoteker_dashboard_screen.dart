@@ -140,10 +140,11 @@ class _ApotekerDashboardScreenState extends State<ApotekerDashboardScreen> {
 
     final patientProfiles = <String, Map<String, dynamic>>{};
     if (patientIds.isNotEmpty) {
+      // Gunakan filter 'in' agar PostgREST mengembalikan baris dengan id dalam daftar
       final List<dynamic> patients = await _supabase
           .from('users')
           .select('id, full_name, photo_url')
-          .contains('id', patientIds);
+          .filter('id', 'in', patientIds);
       for (final raw in patients) {
         final map = Map<String, dynamic>.from(raw as Map);
         final id = map['id']?.toString();
@@ -184,10 +185,11 @@ class _ApotekerDashboardScreenState extends State<ApotekerDashboardScreen> {
     List<String> roomIds,
   ) async {
     if (roomIds.isEmpty) return {};
+    // Ambil pesan terbaru untuk setiap room menggunakan filter 'in' pada room_id
     final List<dynamic> rows = await _supabase
         .from('messages')
         .select('room_id, content, created_at')
-        .contains('room_id', roomIds)
+        .filter('room_id', 'in', roomIds)
         .order('created_at', ascending: false);
 
     final latest = <String, Map<String, dynamic>>{};

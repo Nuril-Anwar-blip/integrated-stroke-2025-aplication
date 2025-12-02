@@ -79,6 +79,7 @@ class AuthService {
         invitationId = invitation['id'];
       }
 
+      // Melakukan sign up ke Supabase Auth
       final authResponse = await _supabase.auth.signUp(
         email: user.email,
         password: password,
@@ -89,7 +90,7 @@ class AuthService {
           ..addAll({'role': role});
 
         if (authResponse.session != null) {
-          // session available -> can insert now
+          // Jika session tersedia (email confirmation dimatikan), langsung insert profil
           profileData['id'] = authResponse.user!.id;
           await _supabase.from('users').insert(profileData);
           if (role == 'apoteker' &&
@@ -128,7 +129,13 @@ class AuthService {
           }
           await AuthLocalService.setLoggedIn(true);
         } else {
-          // no session -> save pending and insert after login
+          // Jika tidak ada session (email confirmation diaktifkan), simpan profil sementara.
+          // Sertakan kode apoteker agar bisa ditandai sebagai terpakai setelah user login.
+          if (role == 'apoteker' &&
+              trimmedCode != null &&
+              trimmedCode.isNotEmpty) {
+            profileData['pharmacist_code'] = trimmedCode;
+          }
           await _savePendingProfile(profileData);
         }
       }
@@ -179,7 +186,37 @@ class AuthService {
           .eq('id', currentUser.id)
           .maybeSingle();
       if (existing == null) {
+        // Insert profil user dari pending profile
         await _supabase.from('users').insert(profileData);
+
+        // Jika user adalah apoteker dan memiliki kode pending, tandai token sebagai terpakai
+        final role = (profileData['role']?.toString() ?? '').toLowerCase();
+        final pendingCode = profileData['pharmacist_code']?.toString();
+        if (role == 'apoteker' &&
+            pendingCode != null &&
+            pendingCode.isNotEmpty) {
+          for (final col in [
+            'code',
+            'token',
+            'invite_code',
+            'admin_token',
+            'kode',
+            'kode_token',
+            'registration_code',
+          ]) {
+            try {
+              final updated = await _supabase
+                  .from('pharmacist_invitations')
+                  .update({'is_used': true})
+                  .eq(col, pendingCode)
+                  .eq('is_used', false)
+                  .select();
+              if (updated is List && updated.isNotEmpty) {
+                break;
+              }
+            } catch (_) {}
+          }
+        }
       }
 
       await prefs.remove('pending_profile');
