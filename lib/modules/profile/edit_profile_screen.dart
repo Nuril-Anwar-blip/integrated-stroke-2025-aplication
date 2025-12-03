@@ -126,21 +126,32 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   Future<void> _uploadImageToSupabase(File file) async {
     setState(() => _isUploading = true);
     final user = Supabase.instance.client.auth.currentUser;
-    if (user == null) return;
-    final fileName =
-        'profile_${user.id}_${DateTime.now().millisecondsSinceEpoch}.jpg';
+    if (user == null) {
+      setState(() => _isUploading = false);
+      return;
+    }
+
+    final path =
+        '${user.id}/profile_${DateTime.now().millisecondsSinceEpoch}.jpg';
     final storage = Supabase.instance.client.storage.from('profile_pictures');
+
     try {
-      await storage.upload(fileName, file);
-      final url = storage.getPublicUrl(fileName);
+      final bytes = await file.readAsBytes();
+      await storage.uploadBinary(
+        path,
+        bytes,
+        fileOptions: const FileOptions(upsert: true, contentType: 'image/jpeg'),
+      );
+      final url = storage.getPublicUrl(path);
       if (!mounted) return;
       setState(() => _photoUrl = url);
     } catch (e) {
-      // Handle error
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Gagal upload foto: $e')));
     } finally {
-      if (mounted) {
-        setState(() => _isUploading = false);
-      }
+      if (mounted) setState(() => _isUploading = false);
     }
   }
 

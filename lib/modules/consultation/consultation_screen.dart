@@ -283,6 +283,14 @@ class _ConsultationScreenState extends State<ConsultationScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final gradient = LinearGradient(
+      colors: [
+        Colors.teal.shade50,
+        Colors.white,
+      ],
+      begin: Alignment.topLeft,
+      end: Alignment.bottomRight,
+    );
 
     if (_currentUserId == null) {
       return Scaffold(
@@ -295,24 +303,35 @@ class _ConsultationScreenState extends State<ConsultationScreen> {
 
     return Scaffold(
       backgroundColor: Colors.grey[100],
+      extendBody: true,
       appBar: AppBar(
-        elevation: 0.4,
-        backgroundColor: Colors.white,
-        foregroundColor: Colors.black87,
+        elevation: 0,
+        backgroundColor: Colors.transparent,
+        foregroundColor: Colors.teal.shade900,
+        flexibleSpace: Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [Colors.teal.shade400, Colors.teal.shade200],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+          ),
+        ),
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new_rounded),
+          icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white),
           onPressed: () => Navigator.pop(context),
         ),
         titleSpacing: 0,
         title: Row(
           children: [
             CircleAvatar(
-              backgroundColor: Colors.teal.shade100,
+              radius: 20,
+              backgroundColor: Colors.white.withOpacity(0.2),
               child: Text(
                 widget.recipientName.trim().isNotEmpty
                     ? widget.recipientName.trim().substring(0, 1).toUpperCase()
                     : '?',
-                style: const TextStyle(color: Colors.teal),
+                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700),
               ),
             ),
             const SizedBox(width: 12),
@@ -326,12 +345,13 @@ class _ConsultationScreenState extends State<ConsultationScreen> {
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
                       fontWeight: FontWeight.w700,
-                      fontSize: 16,
+                      fontSize: 17,
+                      color: Colors.white,
                     ),
                   ),
                   Text(
-                    'Konsultasi aktif',
-                    style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+                    'Konsultasi aktif • Waktu nyata',
+                    style: TextStyle(color: Colors.white.withOpacity(0.8), fontSize: 12),
                   ),
                 ],
               ),
@@ -342,124 +362,128 @@ class _ConsultationScreenState extends State<ConsultationScreen> {
           IconButton(
             tooltip: 'Telepon',
             onPressed: _startPhoneCall,
-            icon: const Icon(Icons.call),
+            icon: const Icon(Icons.call, color: Colors.white),
           ),
           IconButton(
             tooltip: 'Video call',
             onPressed: _startVideoCall,
-            icon: const Icon(Icons.videocam_rounded),
+            icon: const Icon(Icons.videocam_rounded, color: Colors.white),
           ),
         ],
       ),
-      body: Column(
+      body: Stack(
         children: [
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
-            color: Colors.white,
-            child: Row(
-              children: [
-                Icon(Icons.verified_user, color: Colors.teal.shade600),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    'Percakapan ini tercatat dan dapat dipantau oleh tim klinis kami.',
-                    style: TextStyle(color: Colors.grey.shade700, fontSize: 13),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Expanded(
-            child: StreamBuilder<List<ChatMessage>>(
-              stream: _messagesStream,
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator());
-                }
-                final messages = snapshot.data ?? [];
-                if (messages.isEmpty) {
-                  return Center(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          Icons.chat_bubble_outline,
-                          size: 48,
-                          color: Colors.grey.shade500,
-                        ),
-                        const SizedBox(height: 12),
-                        const Text(
-                          'Mulai percakapan Anda',
-                          style: TextStyle(fontWeight: FontWeight.w600),
-                        ),
-                        const SizedBox(height: 4),
-                        const Text(
-                          'Sampaikan keluhan atau pertanyaan terkait terapi.',
-                          textAlign: TextAlign.center,
+          Container(decoration: BoxDecoration(gradient: gradient)),
+          Column(
+            children: [
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(10, 4, 10, 0),
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.05),
+                          blurRadius: 18,
+                          offset: const Offset(0, -4),
                         ),
                       ],
                     ),
-                  );
-                }
-
-                _scrollToBottom();
-
-                return ListView.builder(
-                  controller: _scrollController,
-                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 20),
-                  itemCount: messages.length,
-                  itemBuilder: (context, index) {
-                    final message = messages[index];
-                    final showDateChip =
-                        index == 0 ||
-                        !_isSameDay(
-                          messages[index - 1].createdAt,
-                          message.createdAt,
-                        );
-                    final isSender = message.senderId == _currentUserId;
-                    return Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        if (showDateChip)
-                          Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 8),
-                            child: Center(
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 12,
-                                  vertical: 4,
+                    child: StreamBuilder<List<ChatMessage>>(
+                      stream: _messagesStream,
+                      builder: (context, snapshot) {
+                        if (snapshot.connectionState == ConnectionState.waiting) {
+                          return const Center(child: CircularProgressIndicator());
+                        }
+                        final messages = snapshot.data ?? [];
+                        if (messages.isEmpty) {
+                          return Center(
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  Icons.auto_awesome_outlined,
+                                  size: 56,
+                                  color: Colors.teal.shade200,
                                 ),
-                                decoration: BoxDecoration(
-                                  color: Colors.grey.shade300,
-                                  borderRadius: BorderRadius.circular(24),
+                                const SizedBox(height: 12),
+                                const Text(
+                                  'Mulai percakapan Anda',
+                                  style: TextStyle(fontWeight: FontWeight.w700, fontSize: 18),
                                 ),
-                                child: Text(
-                                  DateFormat(
-                                    'EEEE, d MMM',
-                                    'id_ID',
-                                  ).format(message.createdAt),
-                                  style: const TextStyle(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w600,
-                                  ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  'Sampaikan keluhan atau pertanyaan terkait terapi.',
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(color: Colors.grey.shade700),
                                 ),
-                              ),
+                              ],
                             ),
-                          ),
-                        _MessageBubble(message: message, isSender: isSender),
-                      ],
-                    );
-                  },
-                );
-              },
-            ),
-          ),
-          _MessageComposer(
-            controller: _textController,
-            isSending: _isSending,
-            onSend: _sendMessage,
-            theme: theme,
+                          );
+                        }
+
+                        _scrollToBottom();
+
+                        return ListView.builder(
+                          controller: _scrollController,
+                          padding: const EdgeInsets.fromLTRB(14, 14, 14, 24),
+                          itemCount: messages.length,
+                          itemBuilder: (context, index) {
+                            final message = messages[index];
+                            final showDateChip =
+                                index == 0 ||
+                                !_isSameDay(
+                                  messages[index - 1].createdAt,
+                                  message.createdAt,
+                                );
+                            final isSender = message.senderId == _currentUserId;
+                            return Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                if (showDateChip)
+                                  Padding(
+                                    padding: const EdgeInsets.symmetric(vertical: 8),
+                                    child: Center(
+                                      child: Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 14,
+                                          vertical: 6,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: Colors.teal.shade50,
+                                          borderRadius: BorderRadius.circular(30),
+                                          border: Border.all(color: Colors.teal.shade100),
+                                        ),
+                                        child: Text(
+                                          DateFormat('EEEE, d MMM', 'id_ID').format(message.createdAt),
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.w700,
+                                            color: Colors.teal.shade800,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                _MessageBubble(message: message, isSender: isSender),
+                              ],
+                            );
+                          },
+                        );
+                      },
+                    ),
+                  ),
+                ),
+              ),
+              _MessageComposer(
+                controller: _textController,
+                isSending: _isSending,
+                onSend: _sendMessage,
+                theme: theme,
+              ),
+            ],
           ),
         ],
       ),
@@ -482,78 +506,80 @@ class _MessageComposer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 10,
-            offset: const Offset(0, -4),
+    final parent = context.findAncestorStateOfType<_ConsultationScreenState>();
+    return SafeArea(
+      top: false,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(12, 4, 12, 16),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(16),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.08),
+                blurRadius: 16,
+                offset: const Offset(0, 6),
+              ),
+            ],
           ),
-        ],
-      ),
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-      child: SafeArea(
-        top: false,
-        child: Row(
-          children: [
-            IconButton(
-              tooltip: 'Lampirkan foto',
-              onPressed:
-                  (context.findAncestorStateOfType<_ConsultationScreenState>())
-                      ?._pickAndSendPhoto,
-              icon: Icon(Icons.photo_outlined, color: Colors.teal.shade600),
-            ),
-            IconButton(
-              tooltip: 'Lampirkan dokumen',
-              onPressed:
-                  (context.findAncestorStateOfType<_ConsultationScreenState>())
-                      ?._pickAndSendFile,
-              icon: Icon(
-                Icons.attach_file_rounded,
-                color: Colors.teal.shade600,
+          child: Row(
+            children: [
+              _ComposerIconButton(
+                icon: Icons.photo_outlined,
+                tooltip: 'Lampirkan foto',
+                onTap: parent?._pickAndSendPhoto,
               ),
-            ),
-            Expanded(
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12),
-                decoration: BoxDecoration(
-                  color: Colors.grey.shade100,
-                  borderRadius: BorderRadius.circular(24),
-                ),
-                child: TextField(
-                  controller: controller,
-                  minLines: 1,
-                  maxLines: 4,
-                  decoration: const InputDecoration(
-                    border: InputBorder.none,
-                    hintText: 'Ketik pesan Anda...',
+              const SizedBox(width: 4),
+              _ComposerIconButton(
+                icon: Icons.attach_file_rounded,
+                tooltip: 'Lampirkan dokumen',
+                onTap: parent?._pickAndSendFile,
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade100,
+                    borderRadius: BorderRadius.circular(24),
+                  ),
+                  child: TextField(
+                    controller: controller,
+                    minLines: 1,
+                    maxLines: 5,
+                    decoration: const InputDecoration(
+                      isCollapsed: true,
+                      border: InputBorder.none,
+                      hintText: 'Tulis pesan...',
+                    ),
                   ),
                 ),
               ),
-            ),
-            const SizedBox(width: 8),
-            ValueListenableBuilder<bool>(
-              valueListenable: isSending,
-              builder: (context, sending, _) {
-                if (sending) {
-                  return const SizedBox(
-                    width: 42,
-                    height: 42,
-                    child: CircularProgressIndicator(strokeWidth: 2),
+              const SizedBox(width: 10),
+              ValueListenableBuilder<bool>(
+                valueListenable: isSending,
+                builder: (context, sending, _) {
+                  if (sending) {
+                    return const SizedBox(
+                      width: 42,
+                      height: 42,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    );
+                  }
+                  return CircleAvatar(
+                    radius: 22,
+                    backgroundColor: Colors.teal.shade500,
+                    child: IconButton(
+                      icon: const Icon(Icons.send_rounded, color: Colors.white),
+                      onPressed: onSend,
+                    ),
                   );
-                }
-                return CircleAvatar(
-                  backgroundColor: theme.primaryColor,
-                  child: IconButton(
-                    icon: const Icon(Icons.send, color: Colors.white),
-                    onPressed: onSend,
-                  ),
-                );
-              },
-            ),
-          ],
+                },
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -568,7 +594,7 @@ class _MessageBubble extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final bubbleColor = isSender ? Colors.teal.shade100 : Colors.white;
+    final bubbleColor = isSender ? Colors.teal.shade50 : Colors.white;
     final alignment = isSender ? Alignment.centerRight : Alignment.centerLeft;
     final textColor = isSender ? Colors.teal.shade900 : Colors.grey.shade900;
     final meta = message.metadata;
@@ -583,25 +609,33 @@ class _MessageBubble extends StatelessWidget {
           maxWidth: MediaQuery.of(context).size.width * 0.78,
         ),
         decoration: BoxDecoration(
-          color: bubbleColor,
-          borderRadius: BorderRadius.only(
-            topLeft: const Radius.circular(16),
-            topRight: const Radius.circular(16),
-            bottomLeft: isSender
-                ? const Radius.circular(16)
-                : const Radius.circular(4),
-            bottomRight: isSender
-                ? const Radius.circular(4)
-                : const Radius.circular(16),
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.05),
-              blurRadius: 10,
-              offset: const Offset(0, 4),
+            gradient: isSender
+                ? LinearGradient(
+                    colors: [Colors.teal.shade400, Colors.teal.shade200],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  )
+                : null,
+            color: isSender ? null : bubbleColor,
+            border: isSender
+                ? null
+                : Border.all(color: Colors.grey.shade200),
+            borderRadius: BorderRadius.only(
+              topLeft: const Radius.circular(16),
+              topRight: const Radius.circular(16),
+              bottomLeft:
+                  isSender ? const Radius.circular(16) : const Radius.circular(6),
+              bottomRight:
+                  isSender ? const Radius.circular(6) : const Radius.circular(16),
             ),
-          ],
-        ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.06),
+                blurRadius: 12,
+                offset: const Offset(0, 6),
+              ),
+            ],
+          ),
         child: Column(
           crossAxisAlignment: isSender
               ? CrossAxisAlignment.end
@@ -611,11 +645,14 @@ class _MessageBubble extends StatelessWidget {
                 meta['type'] == 'image' &&
                 (meta['url']?.toString().isNotEmpty ?? false))
               ClipRRect(
-                borderRadius: BorderRadius.circular(12),
-                child: Image.network(
-                  meta['url'] as String,
-                  fit: BoxFit.cover,
-                  width: MediaQuery.of(context).size.width * 0.7,
+                borderRadius: BorderRadius.circular(14),
+                child: AspectRatio(
+                  aspectRatio: 4 / 3,
+                  child: Image.network(
+                    meta['url'] as String,
+                    fit: BoxFit.cover,
+                    width: MediaQuery.of(context).size.width * 0.7,
+                  ),
                 ),
               ),
             if (meta != null &&
@@ -629,8 +666,16 @@ class _MessageBubble extends StatelessWidget {
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Icon(Icons.insert_drive_file, size: 18),
-                    const SizedBox(width: 6),
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.2),
+                        shape: BoxShape.circle,
+                        border: Border.all(color: Colors.white24),
+                      ),
+                      child: const Icon(Icons.insert_drive_file, size: 16),
+                    ),
+                    const SizedBox(width: 8),
                     Flexible(
                       child: Text(
                         (meta['name']?.toString().isNotEmpty ?? false)
@@ -658,7 +703,11 @@ class _MessageBubble extends StatelessWidget {
             else if (content.trim().isNotEmpty)
               Text(
                 content,
-                style: TextStyle(color: textColor, fontSize: 15, height: 1.4),
+                style: TextStyle(
+                  color: isSender ? Colors.white : textColor,
+                  fontSize: 15,
+                  height: 1.4,
+                ),
               ),
             const SizedBox(height: 6),
             Row(
@@ -669,15 +718,82 @@ class _MessageBubble extends StatelessWidget {
               children: [
                 Text(
                   DateFormat.Hm().format(message.createdAt.toLocal()),
-                  style: TextStyle(color: Colors.grey.shade600, fontSize: 11),
+                  style: TextStyle(
+                    color: isSender
+                        ? Colors.white.withOpacity(0.85)
+                        : Colors.grey.shade600,
+                    fontSize: 11,
+                  ),
                 ),
                 if (isSender) ...[
                   const SizedBox(width: 4),
-                  const Icon(Icons.done_all, size: 16, color: Colors.teal),
+                  Icon(Icons.done_all, size: 16, color: Colors.white.withOpacity(0.9)),
                 ],
               ],
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _InfoTag extends StatelessWidget {
+  const _InfoTag({required this.icon, required this.label});
+
+  final IconData icon;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: Colors.teal.shade50,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.teal.shade100),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14, color: Colors.teal.shade600),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            style: TextStyle(
+              color: Colors.teal.shade800,
+              fontWeight: FontWeight.w600,
+              fontSize: 12,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ComposerIconButton extends StatelessWidget {
+  const _ComposerIconButton({required this.icon, this.onTap, required this.tooltip});
+
+  final IconData icon;
+  final VoidCallback? onTap;
+  final String tooltip;
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: tooltip,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            color: Colors.teal.shade50,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: Colors.teal.shade100),
+          ),
+          child: Icon(icon, color: Colors.teal.shade700, size: 20),
         ),
       ),
     );

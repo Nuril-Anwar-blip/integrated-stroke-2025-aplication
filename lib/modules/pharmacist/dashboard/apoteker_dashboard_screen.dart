@@ -124,7 +124,9 @@ class _ApotekerDashboardScreenState extends State<ApotekerDashboardScreen> {
 
     final List<dynamic> rooms = await _supabase
         .from('chat_rooms')
-        .select('id, patient_id, created_at')
+        .select(
+          'id, patient_id, created_at, patient:patient_id (id, full_name, photo_url)',
+        )
         .eq('pharmacist_id', _userId!)
         .order('created_at', ascending: false);
 
@@ -138,27 +140,17 @@ class _ApotekerDashboardScreenState extends State<ApotekerDashboardScreen> {
         .toSet()
         .toList();
 
-    final patientProfiles = <String, Map<String, dynamic>>{};
-    if (patientIds.isNotEmpty) {
-      // Gunakan filter 'in' agar PostgREST mengembalikan baris dengan id dalam daftar
-      final List<dynamic> patients = await _supabase
-          .from('users')
-          .select('id, full_name, photo_url')
-          .filter('id', 'in', patientIds);
-      for (final raw in patients) {
-        final map = Map<String, dynamic>.from(raw as Map);
-        final id = map['id']?.toString();
-        if (id != null) patientProfiles[id] = map;
-      }
-    }
-
     final latestMessages = await _fetchLatestMessages(roomIds);
+    final fallbackProfiles = await _fetchPatientProfiles(patientIds);
 
     final conversations = rooms.map((raw) {
       final row = Map<String, dynamic>.from(raw as Map);
       final roomId = row['id']?.toString() ?? '';
       final patientId = row['patient_id']?.toString() ?? '';
-      final patient = patientProfiles[patientId] ?? {};
+      final patient = Map<String, dynamic>.from(
+        (row['patient'] as Map?) ??
+            (fallbackProfiles[patientId] ?? <String, dynamic>{}),
+      );
       final latestMessage = latestMessages[roomId];
       return PharmacistConversation(
         roomId: roomId,
@@ -200,6 +192,31 @@ class _ApotekerDashboardScreenState extends State<ApotekerDashboardScreen> {
       latest[roomId] = map;
     }
     return latest;
+  }
+
+  Future<Map<String, Map<String, dynamic>>> _fetchPatientProfiles(
+    List<String> patientIds,
+  ) async {
+    if (patientIds.isEmpty) return {};
+    final inValue = _toInFilter(patientIds);
+    final List<dynamic> patients = await _supabase
+        .from('users')
+        .select('id, full_name, photo_url')
+        .filter('id', 'in', inValue)
+        .order('full_name');
+    final map = <String, Map<String, dynamic>>{};
+    for (final raw in patients) {
+      final m = Map<String, dynamic>.from(raw as Map);
+      final id = m['id']?.toString();
+      if (id != null) map[id] = m;
+    }
+    return map;
+  }
+
+  /// Bangun string filter IN PostgREST: ("id1","id2")
+  String _toInFilter(List<String> values) {
+    final quoted = values.map((e) => '"$e"').join(',');
+    return '($quoted)';
   }
 
   void _setupRealtime() {

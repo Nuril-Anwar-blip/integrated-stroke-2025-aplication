@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:integrated_strokes2025/modules/auth/widget/login_form.dart';
+import 'package:integrated_stroke/modules/auth/widget/login_form.dart';
 
 import 'auth_layout.dart';
 

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:intl/intl.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../auth/widget/splash_screen.dart';
 
@@ -13,6 +14,7 @@ class AdminDashboardScreen extends StatefulWidget {
 class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   final _supabase = Supabase.instance.client;
   final TextEditingController _manualTokenController = TextEditingController();
+  final TextEditingController _searchController = TextEditingController();
   RealtimeChannel? _channel;
 
   bool _loading = true;
@@ -25,6 +27,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   List<Map<String, dynamic>> _latestChats = [];
   bool _isAdmin = false;
   String? _errorMessage;
+  String _searchQuery = '';
 
   @override
   void initState() {
@@ -36,6 +39,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   @override
   void dispose() {
     _manualTokenController.dispose();
+    _searchController.dispose();
     if (_channel != null) _supabase.removeChannel(_channel!);
     super.dispose();
   }
@@ -225,12 +229,14 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
           .whereType<String>()
           .toSet()
           .toList();
+      final roomIds =
+          rows.map((e) => e['id']?.toString()).whereType<String>().toList();
       final ids = {...pIds, ...fIds}.toList();
       Map<String, Map<String, dynamic>> profiles = {};
       if (ids.isNotEmpty) {
         final List<dynamic> profs = await _supabase
             .from('users')
-            .select('id, full_name')
+            .select('id, full_name, photo_url')
             .filter('id', 'in', ids);
         for (final raw in profs) {
           final m = Map<String, dynamic>.from(raw as Map);
@@ -238,15 +244,38 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
           if (id != null) profiles[id] = m;
         }
       }
+
+      Map<String, Map<String, dynamic>> lastMessages = {};
+      if (roomIds.isNotEmpty) {
+        final List<dynamic> msgs = await _supabase
+            .from('messages')
+            .select('room_id, content, created_at')
+            .filter('room_id', 'in', roomIds)
+            .order('created_at', ascending: false)
+            .limit(50);
+        for (final raw in msgs) {
+          final m = Map<String, dynamic>.from(raw as Map);
+          final rid = m['room_id']?.toString();
+          if (rid == null || lastMessages.containsKey(rid)) continue;
+          lastMessages[rid] = m;
+        }
+      }
+
       _latestChats = rows.map((raw) {
         final m = Map<String, dynamic>.from(raw as Map);
+        final rid = m['id']?.toString() ?? '';
         final pid = m['patient_id']?.toString() ?? '';
         final fid = m['pharmacist_id']?.toString() ?? '';
+        final lm = lastMessages[rid];
+        final msg = lm?['content']?.toString() ?? 'Belum ada pesan';
+        final time = lm?['created_at']?.toString();
         return {
-          'id': m['id']?.toString() ?? '',
+          'id': rid,
           'patient_name': profiles[pid]?['full_name']?.toString() ?? 'Pasien',
           'pharmacist_name':
               profiles[fid]?['full_name']?.toString() ?? 'Apoteker',
+          'last_message': msg,
+          'last_time': time,
         };
       }).toList();
     } catch (_) {}
@@ -254,6 +283,8 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final filteredPharmacists = _filterUsers(_pharmacists);
+    final filteredPatients = _filterUsers(_patients);
     return Scaffold(
       appBar: AppBar(
         title: const Text('Dashboard Admin'),
@@ -262,6 +293,11 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
             tooltip: 'Segarkan',
             onPressed: () => _loadAll(),
             icon: const Icon(Icons.refresh_rounded),
+          ),
+          IconButton(
+            tooltip: 'Cari',
+            onPressed: _openSearch,
+            icon: const Icon(Icons.search),
           ),
           IconButton(
             onPressed: () async {
@@ -464,7 +500,25 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                           title: Text(
                             '${c['patient_name']} ↔ ${c['pharmacist_name']}',
                           ),
-                          subtitle: Text('Room: ${c['id']}'),
+                          subtitle: Text(
+                            'Room: ${c['id']} • ${c['last_message']}',
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          trailing: c['last_time'] != null
+                              ? Text(
+                                  DateFormat('d MMM HH:mm').format(
+                                    DateTime.tryParse(
+                                          c['last_time']?.toString() ?? '',
+                                        ) ??
+                                        DateTime.now(),
+                                  ),
+                                  style: TextStyle(
+                                    color: Colors.grey.shade600,
+                                    fontSize: 12,
+                                  ),
+                                )
+                              : null,
                         ),
                       ),
                   ],
@@ -492,7 +546,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                     if (_pharmacists.isEmpty)
                       const Text('Tidak ada apoteker.')
                     else
-                      ..._pharmacists.map(
+                      ...filteredPharmacists.map(
                         (u) => ListTile(
                           leading: CircleAvatar(
                             backgroundImage:
@@ -505,6 +559,11 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                           ),
                           title: Text(u['full_name']?.toString() ?? '-'),
                           subtitle: Text(u['email']?.toString() ?? ''),
+                          trailing: IconButton(
+                            icon: const Icon(Icons.delete, color: Colors.red),
+                            onPressed: () =>
+                                _confirmDeleteUser(u['id']?.toString(), 'apoteker'),
+                          ),
                         ),
                       ),
                   ],
@@ -532,7 +591,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                     if (_patients.isEmpty)
                       const Text('Tidak ada pasien.')
                     else
-                      ..._patients.map(
+                      ...filteredPatients.map(
                         (u) => ListTile(
                           leading: CircleAvatar(
                             backgroundImage:
@@ -545,6 +604,11 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                           ),
                           title: Text(u['full_name']?.toString() ?? '-'),
                           subtitle: Text(u['email']?.toString() ?? ''),
+                          trailing: IconButton(
+                            icon: const Icon(Icons.delete, color: Colors.red),
+                            onPressed: () =>
+                                _confirmDeleteUser(u['id']?.toString(), 'pasien'),
+                          ),
                         ),
                       ),
                   ],
@@ -555,6 +619,100 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
         ),
       ),
     );
+  }
+
+  List<Map<String, dynamic>> _filterUsers(List<Map<String, dynamic>> source) {
+    if (_searchQuery.trim().isEmpty) return source;
+    final q = _searchQuery.toLowerCase();
+    return source.where((u) {
+      final name = u['full_name']?.toString().toLowerCase() ?? '';
+      final email = u['email']?.toString().toLowerCase() ?? '';
+      return name.contains(q) || email.contains(q);
+    }).toList();
+  }
+
+  void _openSearch() {
+    _searchController.text = _searchQuery;
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Cari pengguna'),
+        content: TextField(
+          controller: _searchController,
+          decoration: const InputDecoration(
+            hintText: 'Nama atau email',
+            prefixIcon: Icon(Icons.search),
+          ),
+          autofocus: true,
+          onSubmitted: (_) => _applySearch(),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              _searchController.clear();
+              _applySearch(clear: true);
+              Navigator.pop(context);
+            },
+            child: const Text('Reset'),
+          ),
+          TextButton(
+            onPressed: () {
+              _applySearch();
+              Navigator.pop(context);
+            },
+            child: const Text('Terapkan'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _applySearch({bool clear = false}) {
+    setState(() {
+      _searchQuery = clear ? '' : _searchController.text;
+    });
+  }
+
+  Future<void> _confirmDeleteUser(String? id, String label) async {
+    if (id == null) return;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Hapus pengguna'),
+        content: Text('Hapus $label ini secara permanen?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Batal'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Hapus'),
+          ),
+        ],
+      ),
+    );
+    if (ok == true) {
+      await _deleteUser(id);
+    }
+  }
+
+  Future<void> _deleteUser(String id) async {
+    try {
+      await _supabase.from('users').delete().eq('id', id);
+      await _loadAll();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Pengguna dihapus')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Gagal menghapus: $e')),
+        );
+      }
+    }
   }
 }
 

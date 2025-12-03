@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:integrated_strokes2025/modules/emergency_call/emergency_call_screen.dart';
-import 'package:integrated_strokes2025/styles/colors/app_color.dart';
-import 'package:integrated_strokes2025/modules/emergency_location/emergency_location_screen.dart';
+import 'package:integrated_stroke/modules/emergency_call/emergency_call_screen.dart';
+import 'package:integrated_stroke/styles/colors/app_color.dart';
+import 'package:integrated_stroke/modules/emergency_location/emergency_location_screen.dart';
 
 class CustomNavbar extends StatelessWidget {
   final int currentIndex;
