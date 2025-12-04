@@ -21,6 +21,16 @@ class _MedicationReminderScreenState extends State<MedicationReminderScreen> {
   final SupabaseClient _supabase = Supabase.instance.client;
   late final Stream<List<MedicationReminder>> _remindersStream;
   late FlutterLocalNotificationsPlugin _notifications;
+  static const AndroidNotificationChannel _medChannel =
+      AndroidNotificationChannel(
+    'medication_channel',
+    'Pengingat Obat',
+    description: 'Notifikasi untuk pengingat minum obat',
+    importance: Importance.max,
+    playSound: true,
+    enableVibration: true,
+    sound: RawResourceAndroidNotificationSound('alarm_sound'),
+  );
 
   final List<String> _periodFilters = const [
     'Semua',
@@ -65,9 +75,24 @@ class _MedicationReminderScreenState extends State<MedicationReminderScreen> {
     const initSettings = InitializationSettings(android: androidSettings);
     await _notifications.initialize(initSettings);
     tz.initializeTimeZones();
+    final androidImpl = _notifications
+        .resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin>();
+    if (androidImpl != null) {
+      await androidImpl.createNotificationChannel(_medChannel);
+      try {
+        await (androidImpl as dynamic).requestNotificationsPermission();
+      } catch (_) {
+        // Fallback: method not available on this plugin version.
+      }
+      try {
+        await androidImpl.requestExactAlarmsPermission();
+      } catch (_) {
+        // API < 33 will throw; safe to ignore.
+      }
+    }
   }
 
-  /// 🔊 Jadwalkan notifikasi dengan suara alarm
   Future<void> _scheduleNotification(
     int id,
     String name,
@@ -90,7 +115,6 @@ class _MedicationReminderScreenState extends State<MedicationReminderScreen> {
       priority: Priority.high,
       playSound: true,
       enableVibration: true,
-      // vibrationPattern: Int64List.fromList([0, 1000, 500, 2000]),
       sound: RawResourceAndroidNotificationSound('alarm_sound'),
       ticker: 'MedicationReminder',
     );
@@ -108,7 +132,6 @@ class _MedicationReminderScreenState extends State<MedicationReminderScreen> {
     );
   }
 
-  /// 🔘 Tombol test alarm manual
   Future<void> _testAlarmNow() async {
     const androidDetails = AndroidNotificationDetails(
       'test_channel',
@@ -124,7 +147,7 @@ class _MedicationReminderScreenState extends State<MedicationReminderScreen> {
     await _notifications.show(
       999,
       'Tes Alarm',
-      'Alarm berbunyi sekarang 🔔',
+      'Alarm berbunyi sekarang',
       details,
     );
   }
@@ -253,19 +276,29 @@ class _MedicationReminderScreenState extends State<MedicationReminderScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.grey[100],
+      backgroundColor: Colors.grey[50],
       appBar: AppBar(
+        elevation: 0,
+        backgroundColor: Colors.transparent,
+        foregroundColor: Colors.teal.shade900,
+        flexibleSpace: Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [Colors.teal.shade400, Colors.teal.shade200],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+          ),
+        ),
         title: const Text('Pengingat Obat'),
-        backgroundColor: Colors.white,
-        foregroundColor: Colors.black87,
         actions: [
           IconButton(
-            icon: const Icon(Icons.history_rounded),
+            icon: const Icon(Icons.history_rounded, color: Colors.white),
             tooltip: 'Riwayat Pengingat',
             onPressed: _openHistory,
           ),
           IconButton(
-            icon: const Icon(Icons.volume_up_rounded),
+            icon: const Icon(Icons.volume_up_rounded, color: Colors.white),
             tooltip: 'Coba bunyi alarm',
             onPressed: _testAlarmNow,
           ),
@@ -273,69 +306,82 @@ class _MedicationReminderScreenState extends State<MedicationReminderScreen> {
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _addMedication,
+        backgroundColor: Colors.teal.shade500,
         icon: const Icon(Icons.add),
         label: const Text('Tambah Obat'),
       ),
-      body: StreamBuilder<List<MedicationReminder>>(
-        stream: _remindersStream,
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          final reminders = snapshot.data ?? const [];
-          final filtered = _filterReminders(reminders);
-          final upcoming = _upcomingReminder(filtered);
-          final total = reminders.length;
-          final completed = reminders.where((r) => r.taken).length;
+      body: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: [
+              Colors.teal.shade50,
+              Colors.white,
+            ],
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+          ),
+        ),
+        child: StreamBuilder<List<MedicationReminder>>(
+          stream: _remindersStream,
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Center(child: CircularProgressIndicator());
+            }
+            final reminders = snapshot.data ?? const [];
+            final filtered = _filterReminders(reminders);
+            final upcoming = _upcomingReminder(filtered);
+            final total = reminders.length;
+            final completed = reminders.where((r) => r.taken).length;
 
-          return ListView(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 120),
-            children: [
-              _SummaryCard(completed: completed, total: total),
-              const SizedBox(height: 16),
-              _PeriodSelector(
-                periods: _periodFilters,
-                selected: _selectedPeriod,
-                onSelected: (value) => setState(() => _selectedPeriod = value),
-              ),
-              const SizedBox(height: 16),
-              if (upcoming != null)
-                _UpcomingCard(
-                  name: upcoming.name,
-                  dose: upcoming.dose?.isEmpty ?? true
-                      ? 'Tanpa dosis'
-                      : upcoming.dose!,
-                  timeLabel: upcoming.time.format(context),
-                  countdown: _timeUntil(upcoming.time),
-                  accent: Colors.orangeAccent,
-                )
-              else if (total > 0)
-                const _UpcomingCard(
-                  name: 'Semua aman',
-                  dose: 'Tidak ada jadwal dekat',
-                  timeLabel: '—',
-                  countdown: 'Istirahat sejenak',
-                  accent: Colors.green,
+            return ListView(
+              padding: const EdgeInsets.fromLTRB(16, 18, 16, 140),
+              children: [
+                _SummaryCard(completed: completed, total: total),
+                const SizedBox(height: 14),
+                _PeriodSelector(
+                  periods: _periodFilters,
+                  selected: _selectedPeriod,
+                  onSelected: (value) => setState(() => _selectedPeriod = value),
                 ),
-              const SizedBox(height: 16),
-              if (filtered.isEmpty)
-                const _EmptyStateCard(
-                  message:
-                      'Belum ada pengingat obat. Tekan tombol Tambah Obat.',
-                )
-              else
-                ...filtered.map(
-                  (reminder) => Padding(
-                    padding: const EdgeInsets.only(bottom: 12),
-                    child: _MedicationCard(
-                      reminder: reminder,
-                      onToggle: () => _toggleTaken(reminder),
+                const SizedBox(height: 14),
+                if (upcoming != null)
+                  _UpcomingCard(
+                    name: upcoming.name,
+                    dose: upcoming.dose?.isEmpty ?? true
+                        ? 'Tanpa dosis'
+                        : upcoming.dose!,
+                    timeLabel: upcoming.time.format(context),
+                    countdown: _timeUntil(upcoming.time),
+                    accent: Colors.orangeAccent,
+                  )
+                else if (total > 0)
+                  const _UpcomingCard(
+                    name: 'Semua aman',
+                    dose: 'Tidak ada jadwal dekat',
+                    timeLabel: '—',
+                    countdown: 'Istirahat sejenak',
+                    accent: Colors.green,
+                  ),
+                const SizedBox(height: 14),
+                if (filtered.isEmpty)
+                  const _EmptyStateCard(
+                    message:
+                        'Belum ada pengingat. Tekan Tambah Obat atau buat jadwal baru.',
+                  )
+                else
+                  ...filtered.map(
+                    (reminder) => Padding(
+                      padding: const EdgeInsets.only(bottom: 12),
+                      child: _MedicationCard(
+                        reminder: reminder,
+                        onToggle: () => _toggleTaken(reminder),
+                      ),
                     ),
                   ),
-                ),
-            ],
-          );
-        },
+              ],
+            );
+          },
+        ),
       ),
     );
   }
@@ -352,9 +398,6 @@ class _MedicationReminderScreenState extends State<MedicationReminderScreen> {
 }
 
 /// ========================
-/// MODEL
-/// ========================
-/// ========================
 /// UI COMPONENTS
 /// ========================
 class _SummaryCard extends StatelessWidget {
@@ -368,23 +411,61 @@ class _SummaryCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(22),
         gradient: LinearGradient(
-          colors: [Colors.blue.shade700, Colors.blue.shade400],
+          colors: [Colors.teal.shade500, Colors.teal.shade300],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
         ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.teal.withOpacity(0.18),
+            blurRadius: 18,
+            offset: const Offset(0, 10),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'Progres Hari Ini',
-            style: TextStyle(
-              color: Colors.white70,
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
-            ),
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.18),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: const Icon(Icons.health_and_safety, color: Colors.white),
+              ),
+              const SizedBox(width: 10),
+              const Text(
+                'Progres Hari Ini',
+                style: TextStyle(
+                  color: Colors.white70,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const Spacer(),
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.18),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  '${(progress * 100).round()}%',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ],
           ),
-          const SizedBox(height: 6),
+          const SizedBox(height: 12),
           Text(
             total == 0 ? 'Belum ada jadwal' : '$completed dari $total obat',
             style: const TextStyle(
@@ -432,13 +513,23 @@ class _PeriodSelector extends StatelessWidget {
                   label: Text(period),
                   selected: selected == period,
                   onSelected: (_) => onSelected(period),
-                  selectedColor: Colors.blue.shade50,
+                  selectedColor: Colors.teal.shade100,
                   labelStyle: TextStyle(
-                    color: selected == period ? Colors.blue : Colors.black87,
+                    color: selected == period ? Colors.teal.shade800 : Colors.black87,
                     fontWeight: selected == period
                         ? FontWeight.w700
                         : FontWeight.w500,
                   ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    side: BorderSide(
+                      color: selected == period
+                          ? Colors.teal.shade300
+                          : Colors.grey.shade200,
+                    ),
+                  ),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                 ),
               ),
             )
@@ -461,68 +552,86 @@ class _UpcomingCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Container(
-    padding: const EdgeInsets.all(18),
-    decoration: BoxDecoration(
-      color: Colors.white,
-      borderRadius: BorderRadius.circular(18),
-      border: Border.all(color: accent.withOpacity(0.2)),
-    ),
-    child: Row(
-      children: [
-        Container(
-          width: 56,
-          height: 56,
-          decoration: BoxDecoration(
-            color: accent.withOpacity(0.15),
-            borderRadius: BorderRadius.circular(16),
-          ),
-          child: Icon(Icons.alarm, color: accent),
+        padding: const EdgeInsets.all(18),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: accent.withOpacity(0.25)),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.05),
+              blurRadius: 12,
+              offset: const Offset(0, 6),
+            ),
+          ],
         ),
-        const SizedBox(width: 14),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                name,
-                style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w700,
-                ),
+        child: Row(
+          children: [
+            Container(
+              width: 56,
+              height: 56,
+              decoration: BoxDecoration(
+                color: accent.withOpacity(0.15),
+                borderRadius: BorderRadius.circular(16),
               ),
-              const SizedBox(height: 4),
-              Text(
-                dose,
-                style: TextStyle(
-                  color: Colors.grey.shade700,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              const SizedBox(height: 6),
-              Row(
+              child: Icon(Icons.alarm, color: accent),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Icon(Icons.schedule, size: 16, color: Colors.grey.shade600),
-                  const SizedBox(width: 4),
                   Text(
-                    timeLabel,
-                    style: const TextStyle(fontWeight: FontWeight.w600),
+                    name,
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
-                  const SizedBox(width: 14),
+                  const SizedBox(height: 4),
                   Text(
-                    countdown,
+                    dose,
                     style: TextStyle(
-                      color: accent,
+                      color: Colors.grey.shade700,
                       fontWeight: FontWeight.w600,
                     ),
                   ),
+                  const SizedBox(height: 6),
+                  Row(
+                    children: [
+                      Icon(Icons.schedule,
+                          size: 16, color: Colors.grey.shade600),
+                      const SizedBox(width: 4),
+                      Text(
+                        timeLabel,
+                        style: const TextStyle(fontWeight: FontWeight.w700),
+                      ),
+                      const SizedBox(width: 12),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 6,
+                        ),
+                        decoration: BoxDecoration(
+                          color: accent.withOpacity(0.14),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Text(
+                          countdown,
+                          style: TextStyle(
+                            color: accent,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ],
               ),
-            ],
-          ),
+            ),
+          ],
         ),
-      ],
-    ),
-  );
+      );
 }
 
 class _EmptyStateCard extends StatelessWidget {
@@ -530,19 +639,31 @@ class _EmptyStateCard extends StatelessWidget {
   final String message;
   @override
   Widget build(BuildContext context) => Center(
-    child: Padding(
-      padding: const EdgeInsets.all(24),
-      child: Text(
-        message,
-        textAlign: TextAlign.center,
-        style: const TextStyle(
-          fontSize: 15,
-          color: Colors.black54,
-          height: 1.4,
+        child: Padding(
+          padding: const EdgeInsets.all(28),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              CircleAvatar(
+                radius: 40,
+                backgroundColor: Colors.teal.shade50,
+                child: Icon(Icons.medication_outlined,
+                    size: 40, color: Colors.teal.shade400),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                message,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  fontSize: 15,
+                  color: Colors.black54,
+                  height: 1.4,
+                ),
+              ),
+            ],
+          ),
         ),
-      ),
-    ),
-  );
+      );
 }
 
 class _MedicationCard extends StatelessWidget {
@@ -553,6 +674,7 @@ class _MedicationCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final accent = reminder.taken ? Colors.green : Colors.blue;
+    final note = reminder.note?.trim();
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -563,6 +685,13 @@ class _MedicationCard extends StatelessWidget {
               ? Colors.green.withOpacity(0.2)
               : Colors.grey.shade200,
         ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 12,
+            offset: const Offset(0, 6),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -596,6 +725,16 @@ class _MedicationCard extends StatelessWidget {
                           : reminder.dose!,
                       style: TextStyle(color: Colors.grey.shade700),
                     ),
+                    if (note != null && note.isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        note,
+                        style: TextStyle(
+                          color: Colors.grey.shade600,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -618,7 +757,7 @@ class _MedicationCard extends StatelessWidget {
               ),
             ],
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 12),
           Row(
             children: [
               Icon(Icons.access_time, size: 16, color: Colors.grey.shade600),
@@ -637,9 +776,19 @@ class _MedicationCard extends StatelessWidget {
               ),
             ],
           ),
-          const SizedBox(height: 8),
-          OutlinedButton.icon(
+          const SizedBox(height: 10),
+          ElevatedButton.icon(
             onPressed: onToggle,
+            style: ElevatedButton.styleFrom(
+              backgroundColor:
+                  reminder.taken ? Colors.grey.shade200 : Colors.teal.shade50,
+              foregroundColor:
+                  reminder.taken ? Colors.grey.shade800 : Colors.teal.shade700,
+              elevation: 0,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
             icon: Icon(
               reminder.taken ? Icons.refresh : Icons.check_circle_outline,
             ),
@@ -673,68 +822,94 @@ class _AddMedicationDialogState extends State<_AddMedicationDialog> {
 
   @override
   Widget build(BuildContext context) => AlertDialog(
-    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-    backgroundColor: Colors.white,
-    title: const Text('Tambah Pengingat'),
-    content: Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        TextField(
-          controller: _nameController,
-          decoration: const InputDecoration(labelText: 'Nama obat'),
-        ),
-        const SizedBox(height: 12),
-        TextField(
-          controller: _doseController,
-          decoration: const InputDecoration(labelText: 'Dosis'),
-        ),
-        const SizedBox(height: 12),
-        TextField(
-          controller: _noteController,
-          decoration: const InputDecoration(labelText: 'Catatan'),
-        ),
-        const SizedBox(height: 12),
-        Row(
-          children: [
-            Expanded(
-              child: Text(
-                _selectedTime == null
-                    ? 'Jam belum dipilih'
-                    : 'Jam: ${_selectedTime!.format(context)}',
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        backgroundColor: Colors.white,
+        title: const Text('Tambah Pengingat'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: _nameController,
+                decoration: const InputDecoration(
+                  labelText: 'Nama obat',
+                  filled: true,
+                  fillColor: Color(0xfff7f9fb),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.all(Radius.circular(12)),
+                    borderSide: BorderSide.none,
+                  ),
+                ),
               ),
-            ),
-            TextButton.icon(
-              onPressed: () async {
-                final picked = await showTimePicker(
-                  context: context,
-                  initialTime: TimeOfDay.now(),
-                );
-                if (picked != null) setState(() => _selectedTime = picked);
-              },
-              icon: const Icon(Icons.schedule),
-              label: const Text('Pilih Jam'),
-            ),
-          ],
+              const SizedBox(height: 12),
+              TextField(
+                controller: _doseController,
+                decoration: const InputDecoration(
+                  labelText: 'Dosis',
+                  filled: true,
+                  fillColor: Color(0xfff7f9fb),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.all(Radius.circular(12)),
+                    borderSide: BorderSide.none,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _noteController,
+                decoration: const InputDecoration(
+                  labelText: 'Catatan (opsional)',
+                  filled: true,
+                  fillColor: Color(0xfff7f9fb),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.all(Radius.circular(12)),
+                    borderSide: BorderSide.none,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      _selectedTime == null
+                          ? 'Jam belum dipilih'
+                          : 'Jam: ${_selectedTime!.format(context)}',
+                    ),
+                  ),
+                  TextButton.icon(
+                    onPressed: () async {
+                      final picked = await showTimePicker(
+                        context: context,
+                        initialTime: TimeOfDay.now(),
+                      );
+                      if (picked != null) setState(() => _selectedTime = picked);
+                    },
+                    icon: const Icon(Icons.schedule),
+                    label: const Text('Pilih Jam'),
+                  ),
+                ],
+              ),
+            ],
+          ),
         ),
-      ],
-    ),
-    actions: [
-      TextButton(
-        onPressed: () => Navigator.pop(context),
-        child: const Text('Batal'),
-      ),
-      ElevatedButton(
-        onPressed: () {
-          if (_nameController.text.isEmpty || _selectedTime == null) return;
-          Navigator.pop(context, {
-            'name': _nameController.text,
-            'dose': _doseController.text,
-            'note': _noteController.text,
-            'time': _selectedTime,
-          });
-        },
-        child: const Text('Simpan'),
-      ),
-    ],
-  );
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Batal'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              if (_nameController.text.isEmpty || _selectedTime == null) return;
+              Navigator.pop(context, {
+                'name': _nameController.text,
+                'dose': _doseController.text,
+                'note': _noteController.text,
+                'time': _selectedTime,
+              });
+            },
+            child: const Text('Simpan'),
+          ),
+        ],
+      );
 }

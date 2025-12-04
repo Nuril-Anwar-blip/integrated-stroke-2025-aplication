@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
-import 'package:integrated_strokes2025/modules/auth/widget/splash_screen.dart';
+import 'package:integrated_stroke/modules/auth/widget/splash_screen.dart';
 import 'package:intl/date_symbol_data_local.dart'; // Import untuk inisialisasi locale
 
 import 'global.dart';
@@ -27,7 +27,8 @@ Future<void> main() async {
 
 class MyApp extends StatelessWidget {
   final bool isLoggedIn;
-  const MyApp({super.key, required this.isLoggedIn});
+  final Widget? homeOverride;
+  const MyApp({super.key, required this.isLoggedIn, this.homeOverride});
 
   @override
   Widget build(BuildContext context) {
@@ -35,7 +36,7 @@ class MyApp extends StatelessWidget {
       title: 'Integrated Stroke',
       theme: AppTheme.data,
       debugShowCheckedModeBanner: false, // Menghilangkan banner debug
-      home: const SplashScreen(),
+      home: homeOverride ?? const SplashScreen(),
     );
   }
 }

@@ -492,32 +492,91 @@ class _QuickActionRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Expanded(
-          child: OutlinedButton.icon(
-            onPressed: onCreateTap,
-            icon: const Icon(Icons.add_comment_outlined),
-            label: const Text('Posting cepat'),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final itemWidth = (constraints.maxWidth - 20) / 3;
+        final actions = [
+          _QuickActionButton(
+            label: 'Posting cepat',
+            icon: Icons.add_comment_outlined,
+            color: Colors.blue.shade600,
+            onTap: onCreateTap,
+          ),
+          _QuickActionButton(
+            label: 'Segarkan',
+            icon: Icons.autorenew_rounded,
+            color: Colors.teal.shade600,
+            onTap: onRefreshTap,
+          ),
+          _QuickActionButton(
+            label: 'Tips',
+            icon: Icons.lightbulb_outline,
+            color: Colors.orange.shade700,
+            onTap: onTipsTap,
+          ),
+        ];
+
+        return Wrap(
+          spacing: 10,
+          runSpacing: 10,
+          children: actions
+              .map(
+                (action) => SizedBox(width: itemWidth, child: action),
+              )
+              .toList(),
+        );
+      },
+    );
+  }
+}
+
+class _QuickActionButton extends StatelessWidget {
+  const _QuickActionButton({
+    required this.label,
+    required this.icon,
+    required this.color,
+    this.onTap,
+  });
+
+  final String label;
+  final IconData icon;
+  final Color color;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(14),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(14),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: color.withOpacity(0.18)),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(icon, color: color),
+              const SizedBox(width: 8),
+              Flexible(
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: color,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
-        const SizedBox(width: 8),
-        Expanded(
-          child: OutlinedButton.icon(
-            onPressed: onRefreshTap,
-            icon: const Icon(Icons.autorenew_rounded),
-            label: const Text('Segarkan'),
-          ),
-        ),
-        const SizedBox(width: 8),
-        Expanded(
-          child: OutlinedButton.icon(
-            onPressed: onTipsTap,
-            icon: const Icon(Icons.lightbulb_outline),
-            label: const Text('Tips'),
-          ),
-        ),
-      ],
+      ),
     );
   }
 }

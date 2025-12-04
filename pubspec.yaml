@@ -1,10 +1,10 @@
-name: integrated_strokes2025
+name: integrated_stroke
 description: "A new Flutter project."
 publish_to: 'none'
 version: 1.0.0+1
 
 environment:
-  sdk: ^3.10.1
+  sdk: ">=3.9.0 <4.0.0"
 
 dependencies:
   flutter:
@@ -31,6 +31,7 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^6.0.0
+  flutter_launcher_icons: ^0.14.4
 
 flutter:
   uses-material-design: true
@@ -38,3 +39,10 @@ flutter:
   assets:
     - assets/images/
     - .env
+
+flutter_icons:
+  android: true
+  ios: true
+  image_path: "assets/icons/app_icons.png"
+  adaptive_icon_background: "#FFFFFF"
+  adaptive_icon_foreground: "assets/icons/app_icons.png"

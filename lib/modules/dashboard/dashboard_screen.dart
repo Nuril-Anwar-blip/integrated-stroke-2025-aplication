@@ -1,13 +1,13 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:integrated_strokes2025/modules/emergency_location/emergency_location_screen.dart';
-import 'package:integrated_strokes2025/styles/colors/app_color.dart';
-import 'package:integrated_strokes2025/modules/community/community_screen.dart';
-import 'package:integrated_strokes2025/modules/consultation/patient_chat_dashboard_screen.dart';
-import 'package:integrated_strokes2025/modules/profile/profile_screen.dart';
-import 'package:integrated_strokes2025/modules/medication_reminder/medication_reminder_screen.dart';
-import 'package:integrated_strokes2025/modules/navbar/navbar.dart';
-import 'package:integrated_strokes2025/modules/exercise/exercise_screen.dart';
+import 'package:integrated_stroke/modules/emergency_location/emergency_location_screen.dart';
+import 'package:integrated_stroke/styles/colors/app_color.dart';
+import 'package:integrated_stroke/modules/community/community_screen.dart';
+import 'package:integrated_stroke/modules/consultation/patient_chat_dashboard_screen.dart';
+import 'package:integrated_stroke/modules/profile/profile_screen.dart';
+import 'package:integrated_stroke/modules/medication_reminder/medication_reminder_screen.dart';
+import 'package:integrated_stroke/modules/navbar/navbar.dart';
+import 'package:integrated_stroke/modules/exercise/exercise_screen.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class DashboardScreen extends StatefulWidget {
@@ -60,6 +60,8 @@ class _HomeTabState extends State<_HomeTab> {
   RealtimeChannel? _sensorChannel;
   String? _userId;
   _DashboardStats _currentStats = _DashboardStats.empty();
+  String _userName = 'Integrated Stroke';
+  String? _photoUrl;
 
   @override
   void initState() {
@@ -78,6 +80,7 @@ class _HomeTabState extends State<_HomeTab> {
 
     // Ambil data awal
     await _fetchLatestHeartRate();
+    await _loadUserProfile();
 
     // Listen untuk perubahan data baru (realtime)
     _sensorChannel = _supabase.channel('realtime_sensor_data_$_userId')
@@ -134,6 +137,25 @@ class _HomeTabState extends State<_HomeTab> {
     return "$hr bpm";
   }
 
+  Future<void> _loadUserProfile() async {
+    if (_userId == null) return;
+    try {
+      final data = await _supabase
+          .from('users')
+          .select('full_name, photo_url')
+          .eq('id', _userId!)
+          .maybeSingle();
+      if (!mounted || data == null) return;
+      setState(() {
+        final name = data['full_name']?.toString() ?? '';
+        _userName = name.isNotEmpty ? name : 'Integrated Stroke';
+        _photoUrl = data['photo_url']?.toString();
+      });
+    } catch (e) {
+      debugPrint('Failed to load profile: $e');
+    }
+  }
+
   /// Update data di StreamController agar UI auto-refresh
   void _updateStats({String? heartRate, String? medication}) {
     _currentStats = _DashboardStats(
@@ -160,7 +182,7 @@ class _HomeTabState extends State<_HomeTab> {
     return ListView(
       padding: EdgeInsets.fromLTRB(16, 8, 16, bottom),
       children: [
-        const _TopBar(),
+        _TopBar(name: _userName, photoUrl: _photoUrl),
         const SizedBox(height: 14),
         StreamBuilder<_DashboardStats>(
           stream: _statsStream,
@@ -173,14 +195,6 @@ class _HomeTabState extends State<_HomeTab> {
                     title: 'Detak Jantung',
                     value: stats.heartRate,
                     color: Colors.redAccent,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: _StatCard(
-                    title: 'Obat',
-                    value: stats.medicationFrequency,
-                    color: Colors.green,
                   ),
                 ),
               ],
@@ -278,29 +292,117 @@ class _DashboardStats {
 
 /// ======== UI COMPONENTS =========
 class _TopBar extends StatelessWidget {
-  const _TopBar();
+  const _TopBar({required this.name, this.photoUrl});
+
+  final String name;
+  final String? photoUrl;
+
+  String get _initial =>
+      name.trim().isNotEmpty ? name.trim().substring(0, 1).toUpperCase() : 'I';
+
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(0, 4, 0, 6),
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [Colors.teal.shade400, Colors.teal.shade200],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.teal.withOpacity(0.15),
+            blurRadius: 18,
+            offset: const Offset(0, 10),
+          ),
+        ],
+      ),
       child: Row(
         children: [
-          const CircleAvatar(radius: 22, child: Icon(Icons.person_outline)),
-          const SizedBox(width: 12),
-          const Expanded(
+          CircleAvatar(
+            radius: 26,
+            backgroundColor: Colors.white,
+            backgroundImage: (photoUrl != null && photoUrl!.isNotEmpty)
+                ? NetworkImage(photoUrl!)
+                : null,
+            child: (photoUrl == null || photoUrl!.isEmpty)
+                ? Text(
+                    _initial,
+                    style: const TextStyle(
+                      color: Colors.teal,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 18,
+                    ),
+                  )
+                : null,
+          ),
+          const SizedBox(width: 14),
+          Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
                   'Selamat Datang',
-                  style: TextStyle(fontSize: 12, color: Colors.black54),
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Colors.white.withOpacity(0.85),
+                  ),
                 ),
-                SizedBox(height: 4),
+                const SizedBox(height: 4),
                 Text(
-                  'Integrated Stroke',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 19,
+                    fontWeight: FontWeight.w800,
+                    color: Colors.white,
+                  ),
                 ),
               ],
+            ),
+          ),
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.2),
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(Icons.notifications_none, color: Colors.white),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _Tag extends StatelessWidget {
+  const _Tag({required this.label, required this.icon, required this.color});
+  final String label;
+  final IconData icon;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.18),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14, color: color),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            style: TextStyle(
+              color: color,
+              fontWeight: FontWeight.w700,
+              fontSize: 12,
             ),
           ),
         ],
