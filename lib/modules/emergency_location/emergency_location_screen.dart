@@ -278,9 +278,9 @@ class _EmergencyLocationScreenState extends State<EmergencyLocationScreen> {
       await _openGoogleMaps(_places.first.location);
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Gagal membuka rute: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Gagal membuka rute: $e')));
       }
     }
   }
@@ -397,12 +397,20 @@ class _HospitalPlace {
       coord.longitude,
     );
 
+    final dn = json["displayName"];
+    final name = dn is Map && dn["text"] is String
+        ? (dn["text"] as String)
+        : (dn?.toString() ?? "Tanpa Nama");
+    final address =
+        json["formattedAddress"]?.toString() ?? "Alamat tidak tersedia";
+    final phone = json["nationalPhoneNumber"]?.toString();
+
     return _HospitalPlace(
-      name: json["displayName"] ?? "Tanpa Nama",
-      address: json["formattedAddress"] ?? "Alamat tidak tersedia",
+      name: name,
+      address: address,
       location: coord,
       distance: dist,
-      phoneNumber: json["nationalPhoneNumber"],
+      phoneNumber: phone,
     );
   }
 }
