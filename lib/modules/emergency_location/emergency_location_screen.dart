@@ -1,10 +1,11 @@
 import 'dart:async';
-import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
-import 'package:http/http.dart' as http;
 import 'package:url_launcher/url_launcher.dart';
+
+import '../../services/emergency_service.dart';
+import '../../screens/maps_route_screen.dart';
 
 class EmergencyLocationScreen extends StatefulWidget {
   const EmergencyLocationScreen({super.key});
@@ -15,16 +16,17 @@ class EmergencyLocationScreen extends StatefulWidget {
 }
 
 class _EmergencyLocationScreenState extends State<EmergencyLocationScreen> {
-  // -------------------------------
-  // 🔥 GANTI API KEY DI SINI
-  // -------------------------------
+  // Ganti API key di sini atau gunakan dotenv.
   static const String apiKey = "AIzaSyBggaOmseqyHiiS7KYgOwquqXkdXJgc5dY";
+  late final EmergencyService _emergencyService =
+      EmergencyService(placesApiKey: apiKey);
 
   final Completer<GoogleMapController> _mapController = Completer();
   LatLng? _currentLatLng;
 
   bool _loadingLocation = true;
   bool _loadingPlaces = false;
+  bool _loadingRoute = false;
   String? _error;
 
   final Set<Marker> _markers = {};
@@ -45,9 +47,6 @@ class _EmergencyLocationScreenState extends State<EmergencyLocationScreen> {
     }
   }
 
-  // ================================
-  // 📍 AMBIL LOKASI
-  // ================================
   Future<void> _getLocation() async {
     try {
       final serviceEnabled = await Geolocator.isLocationServiceEnabled();
@@ -92,10 +91,6 @@ class _EmergencyLocationScreenState extends State<EmergencyLocationScreen> {
     }
   }
 
-  // =============================================================
-  // ⭐ METHOD UTAMA – DIJAMIN MENGEMBALIKAN RUMAH SAKIT
-  // Dengan fallback strategi
-  // =============================================================
   Future<void> _fetchHospitalsGuaranteed() async {
     setState(() {
       _loadingPlaces = true;
@@ -105,187 +100,84 @@ class _EmergencyLocationScreenState extends State<EmergencyLocationScreen> {
     _places.clear();
     _markers.removeWhere((m) => m.markerId.value != 'you');
 
-    // 1️⃣ Coba "hospital"
-    final primary = await _searchNearby(type: "hospital", radius: 20000);
-
-    if (primary.isNotEmpty) {
-      _places.addAll(primary);
-      setState(() => _loadingPlaces = false);
+    if (_currentLatLng == null) {
+      setState(() {
+        _loadingPlaces = false;
+        _error = "Lokasi belum tersedia.";
+      });
       return;
     }
 
-    // 2️⃣ Coba fallback: "clinic"
-    final fallback1 = await _searchNearby(type: "clinic", radius: 20000);
-    if (fallback1.isNotEmpty) {
-      _places.addAll(fallback1);
-      setState(() => _loadingPlaces = false);
+    final hospitals = await _emergencyService.findNearbyHospitals(
+      _currentLatLng!,
+      initialRadius: 5000,
+    );
+
+    if (hospitals.isEmpty) {
+      setState(() {
+        _loadingPlaces = false;
+        _error = "Tidak ditemukan rumah sakit dalam radius 20 km.";
+      });
       return;
     }
 
-    // 3️⃣ Coba fallback: "health"
-    final fallback2 = await _searchNearby(type: "health", radius: 20000);
-    if (fallback2.isNotEmpty) {
-      _places.addAll(fallback2);
-      setState(() => _loadingPlaces = false);
-      return;
+    for (final h in hospitals) {
+      final distance = h.distanceMeters ??
+          Geolocator.distanceBetween(
+            _currentLatLng!.latitude,
+            _currentLatLng!.longitude,
+            h.location.latitude,
+            h.location.longitude,
+          );
+      _places.add(
+        _HospitalPlace(
+          name: h.name,
+          address: h.address,
+          location: h.location,
+          distance: distance,
+          phoneNumber: null,
+        ),
+      );
+      _markers.add(
+        Marker(
+          markerId: MarkerId(h.name),
+          position: h.location,
+          infoWindow: InfoWindow(
+            title: h.name,
+            snippet:
+                "${(distance / 1000).toStringAsFixed(2)} km • ${h.address}",
+          ),
+        ),
+      );
     }
 
     setState(() {
       _loadingPlaces = false;
-      _error = "Tidak ada rumah sakit dalam radius 20 km.";
     });
   }
 
-  // =============================================================
-  // 🔥 FUNCTION PLACES API NEW v1
-  // =============================================================
-  Future<List<_HospitalPlace>> _searchNearby({
-    required String type,
-    required double radius,
-  }) async {
-    if (_currentLatLng == null) return [];
-
-    final url = Uri.parse(
-      "https://places.googleapis.com/v1/places:searchNearby",
-    );
-
-    final payload = {
-      "includedTypes": [type],
-      "languageCode": "id",
-      "maxResultCount": 20,
-      "locationRestriction": {
-        "circle": {
-          "center": {
-            "latitude": _currentLatLng!.latitude,
-            "longitude": _currentLatLng!.longitude,
-          },
-          "radius": radius,
-        },
-      },
-    };
-
-    final headers = {
-      "Content-Type": "application/json",
-      "X-Goog-Api-Key": apiKey,
-      "X-Goog-FieldMask":
-          "places.displayName,places.formattedAddress,places.location,places.rating,places.nationalPhoneNumber",
-    };
-
-    try {
-      final res = await http.post(
-        url,
-        headers: headers,
-        body: jsonEncode(payload),
-      );
-      if (res.statusCode != 200) {
-        if (mounted) {
-          setState(() {
-            _error = "Gagal memuat data lokasi kesehatan.";
-          });
-        }
-        return [];
-      }
-
-      final decoded = jsonDecode(res.body);
-
-      if (decoded["places"] == null) return [];
-
-      final List<_HospitalPlace> result = [];
-
-      for (final p in decoded["places"]) {
-        final loc = p["location"];
-        result.add(
-          _HospitalPlace.fromApi(
-            p,
-            LatLng(
-              (loc["latitude"] as num).toDouble(),
-              (loc["longitude"] as num).toDouble(),
-            ),
-            _currentLatLng!,
-          ),
-        );
-      }
-
-      result.sort((a, b) => a.distance.compareTo(b.distance));
-
-      // update markers
-      for (final hospital in result) {
-        _markers.add(
-          Marker(
-            markerId: MarkerId(hospital.name),
-            position: hospital.location,
-            infoWindow: InfoWindow(
-              title: hospital.name,
-              snippet:
-                  "${(hospital.distance / 1000).toStringAsFixed(2)} km • ${hospital.address}",
-            ),
-          ),
-        );
-      }
-
-      if (mounted) setState(() {});
-      return result;
-    } catch (e) {
-      if (mounted) {
-        setState(() {
-          _error = "Gagal memuat tempat: $e";
-        });
-      }
-      return [];
-    }
-  }
-
-  // =============================================================
   Future<void> _animateTo(LatLng target, {double zoom = 15}) async {
     if (!_mapController.isCompleted) return;
     final c = await _mapController.future;
     c.animateCamera(CameraUpdate.newLatLngZoom(target, zoom));
   }
 
-  Future<void> _openGoogleMaps(LatLng loc) async {
-    final uri = Uri.parse(
-      "https://www.google.com/maps/dir/?api=1&destination=${loc.latitude},${loc.longitude}&travelmode=driving",
-    );
-    try {
-      final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
-      if (!ok && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Tidak dapat membuka Google Maps')),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Gagal membuka Maps: $e')));
-      }
-    }
-  }
-
   Future<void> _routeToNearest() async {
-    try {
-      if (_places.isEmpty) {
-        await _fetchHospitalsGuaranteed();
-      }
-      if (_places.isEmpty) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Tidak ditemukan RS terdekat')),
-          );
-        }
-        return;
-      }
-      await _openGoogleMaps(_places.first.location);
-    } catch (e) {
+    if (_currentLatLng == null) return;
+    if (_places.isEmpty) {
+      await _fetchHospitalsGuaranteed();
+    }
+    if (_places.isEmpty) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Gagal membuka rute: $e')),
+          const SnackBar(content: Text('Tidak ditemukan RS terdekat')),
         );
       }
+      return;
     }
+    await _openRouteInternal(_places.first);
   }
 
-  // =============================================================
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -301,13 +193,16 @@ class _EmergencyLocationScreenState extends State<EmergencyLocationScreen> {
             myLocationEnabled: true,
             onMapCreated: (c) => _mapController.complete(c),
           ),
-
           if (_loadingLocation || _loadingPlaces)
             Container(
               color: Colors.white70,
               child: const Center(child: CircularProgressIndicator()),
             ),
-
+          if (_loadingRoute)
+            Container(
+              color: Colors.black26,
+              child: const Center(child: CircularProgressIndicator()),
+            ),
           if (_error != null)
             Positioned(
               top: 30,
@@ -325,7 +220,6 @@ class _EmergencyLocationScreenState extends State<EmergencyLocationScreen> {
                 ),
               ),
             ),
-
           if (_places.isNotEmpty)
             Positioned(
               bottom: 0,
@@ -333,7 +227,7 @@ class _EmergencyLocationScreenState extends State<EmergencyLocationScreen> {
               right: 0,
               child: _HospitalList(
                 places: _places,
-                onNavigate: (p) => _openGoogleMaps(p.location),
+                onNavigate: _openRouteInternal,
                 onSelect: (p) => _animateTo(p.location),
                 onCall: (p) async {
                   final phone = p.phoneNumber;
@@ -365,11 +259,34 @@ class _EmergencyLocationScreenState extends State<EmergencyLocationScreen> {
       ),
     );
   }
+
+  Future<void> _openRouteInternal(_HospitalPlace place) async {
+    if (_currentLatLng == null) return;
+    setState(() => _loadingRoute = true);
+    final points = await _emergencyService.fetchRoutePolyline(
+      origin: _currentLatLng!,
+      destination: place.location,
+    );
+    setState(() => _loadingRoute = false);
+
+    if (!mounted) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => MapsRouteScreen(
+          userLocation: _currentLatLng!,
+          hospital: NearbyHospital(
+            name: place.name,
+            address: place.address,
+            location: place.location,
+            distanceMeters: place.distance,
+          ),
+          routePoints: points,
+        ),
+      ),
+    );
+  }
 }
 
-// =============================================================
-// MODEL
-// =============================================================
 class _HospitalPlace {
   final String name;
   final String address;
@@ -384,32 +301,8 @@ class _HospitalPlace {
     required this.distance,
     this.phoneNumber,
   });
-
-  factory _HospitalPlace.fromApi(
-    Map<String, dynamic> json,
-    LatLng coord,
-    LatLng origin,
-  ) {
-    double dist = Geolocator.distanceBetween(
-      origin.latitude,
-      origin.longitude,
-      coord.latitude,
-      coord.longitude,
-    );
-
-    return _HospitalPlace(
-      name: json["displayName"] ?? "Tanpa Nama",
-      address: json["formattedAddress"] ?? "Alamat tidak tersedia",
-      location: coord,
-      distance: dist,
-      phoneNumber: json["nationalPhoneNumber"],
-    );
-  }
 }
 
-// =============================================================
-// LIST WIDGET
-// =============================================================
 class _HospitalList extends StatelessWidget {
   final List<_HospitalPlace> places;
   final void Function(_HospitalPlace) onNavigate;
@@ -417,7 +310,6 @@ class _HospitalList extends StatelessWidget {
   final void Function(_HospitalPlace) onCall;
 
   const _HospitalList({
-    super.key,
     required this.places,
     required this.onNavigate,
     required this.onSelect,

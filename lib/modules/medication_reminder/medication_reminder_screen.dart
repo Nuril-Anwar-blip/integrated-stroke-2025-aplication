@@ -1,11 +1,9 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:timezone/data/latest.dart' as tz;
-import 'package:timezone/timezone.dart' as tz;
 
+import '../../services/notification_initializer.dart';
 import 'medication_history_screen.dart';
 import 'models/medication_reminder.dart';
 
@@ -20,17 +18,6 @@ class MedicationReminderScreen extends StatefulWidget {
 class _MedicationReminderScreenState extends State<MedicationReminderScreen> {
   final SupabaseClient _supabase = Supabase.instance.client;
   late final Stream<List<MedicationReminder>> _remindersStream;
-  late FlutterLocalNotificationsPlugin _notifications;
-  static const AndroidNotificationChannel _medChannel =
-      AndroidNotificationChannel(
-    'medication_channel',
-    'Pengingat Obat',
-    description: 'Notifikasi untuk pengingat minum obat',
-    importance: Importance.max,
-    playSound: true,
-    enableVibration: true,
-    sound: RawResourceAndroidNotificationSound('alarm_sound'),
-  );
 
   final List<String> _periodFilters = const [
     'Semua',
@@ -46,7 +33,6 @@ class _MedicationReminderScreenState extends State<MedicationReminderScreen> {
   @override
   void initState() {
     super.initState();
-    _initializeNotifications();
     _userId = _supabase.auth.currentUser?.id;
     if (_userId == null) {
       _remindersStream = Stream.value(const []);
@@ -59,37 +45,12 @@ class _MedicationReminderScreenState extends State<MedicationReminderScreen> {
           .map(
             (rows) => rows
                 .map(
-                  (row) =>
-                      MedicationReminder.fromMap(row as Map<String, dynamic>),
+                  (row) => MedicationReminder.fromMap(
+                    Map<String, dynamic>.from(row as Map),
+                  ),
                 )
                 .toList(),
           );
-    }
-  }
-
-  Future<void> _initializeNotifications() async {
-    _notifications = FlutterLocalNotificationsPlugin();
-    const androidSettings = AndroidInitializationSettings(
-      '@mipmap/ic_launcher',
-    );
-    const initSettings = InitializationSettings(android: androidSettings);
-    await _notifications.initialize(initSettings);
-    tz.initializeTimeZones();
-    final androidImpl = _notifications
-        .resolvePlatformSpecificImplementation<
-            AndroidFlutterLocalNotificationsPlugin>();
-    if (androidImpl != null) {
-      await androidImpl.createNotificationChannel(_medChannel);
-      try {
-        await (androidImpl as dynamic).requestNotificationsPermission();
-      } catch (_) {
-        // Fallback: method not available on this plugin version.
-      }
-      try {
-        await androidImpl.requestExactAlarmsPermission();
-      } catch (_) {
-        // API < 33 will throw; safe to ignore.
-      }
     }
   }
 
@@ -98,58 +59,17 @@ class _MedicationReminderScreenState extends State<MedicationReminderScreen> {
     String name,
     TimeOfDay time,
   ) async {
-    final now = TimeOfDay.now();
-    Duration diff = Duration(
-      hours: time.hour - now.hour,
-      minutes: time.minute - now.minute,
-    );
-    if (diff.isNegative) diff += const Duration(days: 1);
-
-    final scheduledTime = tz.TZDateTime.now(tz.local).add(diff);
-
-    const androidDetails = AndroidNotificationDetails(
-      'medication_channel',
-      'Pengingat Obat',
-      channelDescription: 'Notifikasi untuk pengingat minum obat',
-      importance: Importance.max,
-      priority: Priority.high,
-      playSound: true,
-      enableVibration: true,
-      sound: RawResourceAndroidNotificationSound('alarm_sound'),
-      ticker: 'MedicationReminder',
-    );
-
-    const details = NotificationDetails(android: androidDetails);
-
-    await _notifications.zonedSchedule(
-      id,
-      'Waktunya minum obat!',
-      'Minum obat: $name sekarang!',
-      scheduledTime,
-      details,
-      androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
-      matchDateTimeComponents: DateTimeComponents.time,
+    await NotificationInitializer.scheduleNotification(
+      id: id,
+      title: 'Waktunya minum obat!',
+      body: 'Minum obat: $name sekarang!',
+      timeOfDay: time,
+      payload: 'medication_$id',
     );
   }
 
   Future<void> _testAlarmNow() async {
-    const androidDetails = AndroidNotificationDetails(
-      'test_channel',
-      'Tes Alarm',
-      channelDescription: 'Coba suara alarm sekarang',
-      importance: Importance.max,
-      priority: Priority.high,
-      playSound: true,
-      enableVibration: true,
-      sound: RawResourceAndroidNotificationSound('alarm_sound'),
-    );
-    const details = NotificationDetails(android: androidDetails);
-    await _notifications.show(
-      999,
-      'Tes Alarm',
-      'Alarm berbunyi sekarang',
-      details,
-    );
+    await NotificationInitializer.showTestAlarmNow();
   }
 
   Future<void> _addMedication() async {
@@ -180,13 +100,11 @@ class _MedicationReminderScreenState extends State<MedicationReminderScreen> {
     };
 
     try {
-      final inserted =
-          await _supabase
-                  .from('medication_reminders')
-                  .insert(payload)
-                  .select()
-                  .single()
-              as Map<String, dynamic>;
+      final Map<String, dynamic> inserted = await _supabase
+          .from('medication_reminders')
+          .insert(payload)
+          .select()
+          .single();
       await _scheduleNotification(
         _notificationIdCounter++,
         inserted['name'] as String,
