@@ -284,10 +284,7 @@ class _ConsultationScreenState extends State<ConsultationScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final gradient = LinearGradient(
-      colors: [
-        Colors.teal.shade50,
-        Colors.white,
-      ],
+      colors: [Colors.teal.shade50, Colors.white],
       begin: Alignment.topLeft,
       end: Alignment.bottomRight,
     );
@@ -318,7 +315,10 @@ class _ConsultationScreenState extends State<ConsultationScreen> {
           ),
         ),
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white),
+          icon: const Icon(
+            Icons.arrow_back_ios_new_rounded,
+            color: Colors.white,
+          ),
           onPressed: () => Navigator.pop(context),
         ),
         titleSpacing: 0,
@@ -331,7 +331,10 @@ class _ConsultationScreenState extends State<ConsultationScreen> {
                 widget.recipientName.trim().isNotEmpty
                     ? widget.recipientName.trim().substring(0, 1).toUpperCase()
                     : '?',
-                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700),
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w700,
+                ),
               ),
             ),
             const SizedBox(width: 12),
@@ -351,7 +354,10 @@ class _ConsultationScreenState extends State<ConsultationScreen> {
                   ),
                   Text(
                     'Konsultasi aktif • Waktu nyata',
-                    style: TextStyle(color: Colors.white.withOpacity(0.8), fontSize: 12),
+                    style: TextStyle(
+                      color: Colors.white.withOpacity(0.8),
+                      fontSize: 12,
+                    ),
                   ),
                 ],
               ),
@@ -382,7 +388,9 @@ class _ConsultationScreenState extends State<ConsultationScreen> {
                   child: Container(
                     decoration: BoxDecoration(
                       color: Colors.white,
-                      borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+                      borderRadius: const BorderRadius.vertical(
+                        top: Radius.circular(24),
+                      ),
                       boxShadow: [
                         BoxShadow(
                           color: Colors.black.withOpacity(0.05),
@@ -394,8 +402,11 @@ class _ConsultationScreenState extends State<ConsultationScreen> {
                     child: StreamBuilder<List<ChatMessage>>(
                       stream: _messagesStream,
                       builder: (context, snapshot) {
-                        if (snapshot.connectionState == ConnectionState.waiting) {
-                          return const Center(child: CircularProgressIndicator());
+                        if (snapshot.connectionState ==
+                            ConnectionState.waiting) {
+                          return const Center(
+                            child: CircularProgressIndicator(),
+                          );
                         }
                         final messages = snapshot.data ?? [];
                         if (messages.isEmpty) {
@@ -411,7 +422,10 @@ class _ConsultationScreenState extends State<ConsultationScreen> {
                                 const SizedBox(height: 12),
                                 const Text(
                                   'Mulai percakapan Anda',
-                                  style: TextStyle(fontWeight: FontWeight.w700, fontSize: 18),
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.w700,
+                                    fontSize: 18,
+                                  ),
                                 ),
                                 const SizedBox(height: 4),
                                 Text(
@@ -444,7 +458,9 @@ class _ConsultationScreenState extends State<ConsultationScreen> {
                               children: [
                                 if (showDateChip)
                                   Padding(
-                                    padding: const EdgeInsets.symmetric(vertical: 8),
+                                    padding: const EdgeInsets.symmetric(
+                                      vertical: 8,
+                                    ),
                                     child: Center(
                                       child: Container(
                                         padding: const EdgeInsets.symmetric(
@@ -453,11 +469,18 @@ class _ConsultationScreenState extends State<ConsultationScreen> {
                                         ),
                                         decoration: BoxDecoration(
                                           color: Colors.teal.shade50,
-                                          borderRadius: BorderRadius.circular(30),
-                                          border: Border.all(color: Colors.teal.shade100),
+                                          borderRadius: BorderRadius.circular(
+                                            30,
+                                          ),
+                                          border: Border.all(
+                                            color: Colors.teal.shade100,
+                                          ),
                                         ),
                                         child: Text(
-                                          DateFormat('EEEE, d MMM', 'id_ID').format(message.createdAt),
+                                          DateFormat(
+                                            'EEEE, d MMM',
+                                            'id_ID',
+                                          ).format(message.createdAt),
                                           style: TextStyle(
                                             fontSize: 12,
                                             fontWeight: FontWeight.w700,
@@ -467,7 +490,10 @@ class _ConsultationScreenState extends State<ConsultationScreen> {
                                       ),
                                     ),
                                   ),
-                                _MessageBubble(message: message, isSender: isSender),
+                                _MessageBubble(
+                                  message: message,
+                                  isSender: isSender,
+                                ),
                               ],
                             );
                           },
@@ -540,7 +566,10 @@ class _MessageComposer extends StatelessWidget {
               const SizedBox(width: 10),
               Expanded(
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 10,
+                  ),
                   decoration: BoxDecoration(
                     color: Colors.grey.shade100,
                     borderRadius: BorderRadius.circular(24),
@@ -609,33 +638,33 @@ class _MessageBubble extends StatelessWidget {
           maxWidth: MediaQuery.of(context).size.width * 0.78,
         ),
         decoration: BoxDecoration(
-            gradient: isSender
-                ? LinearGradient(
-                    colors: [Colors.teal.shade400, Colors.teal.shade200],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  )
-                : null,
-            color: isSender ? null : bubbleColor,
-            border: isSender
-                ? null
-                : Border.all(color: Colors.grey.shade200),
-            borderRadius: BorderRadius.only(
-              topLeft: const Radius.circular(16),
-              topRight: const Radius.circular(16),
-              bottomLeft:
-                  isSender ? const Radius.circular(16) : const Radius.circular(6),
-              bottomRight:
-                  isSender ? const Radius.circular(6) : const Radius.circular(16),
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.06),
-                blurRadius: 12,
-                offset: const Offset(0, 6),
-              ),
-            ],
+          gradient: isSender
+              ? LinearGradient(
+                  colors: [Colors.teal.shade400, Colors.teal.shade200],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                )
+              : null,
+          color: isSender ? null : bubbleColor,
+          border: isSender ? null : Border.all(color: Colors.grey.shade200),
+          borderRadius: BorderRadius.only(
+            topLeft: const Radius.circular(16),
+            topRight: const Radius.circular(16),
+            bottomLeft: isSender
+                ? const Radius.circular(16)
+                : const Radius.circular(6),
+            bottomRight: isSender
+                ? const Radius.circular(6)
+                : const Radius.circular(16),
           ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.06),
+              blurRadius: 12,
+              offset: const Offset(0, 6),
+            ),
+          ],
+        ),
         child: Column(
           crossAxisAlignment: isSender
               ? CrossAxisAlignment.end
@@ -727,7 +756,11 @@ class _MessageBubble extends StatelessWidget {
                 ),
                 if (isSender) ...[
                   const SizedBox(width: 4),
-                  Icon(Icons.done_all, size: 16, color: Colors.white.withOpacity(0.9)),
+                  Icon(
+                    Icons.done_all,
+                    size: 16,
+                    color: Colors.white.withOpacity(0.9),
+                  ),
                 ],
               ],
             ),
@@ -773,7 +806,11 @@ class _InfoTag extends StatelessWidget {
 }
 
 class _ComposerIconButton extends StatelessWidget {
-  const _ComposerIconButton({required this.icon, this.onTap, required this.tooltip});
+  const _ComposerIconButton({
+    required this.icon,
+    this.onTap,
+    required this.tooltip,
+  });
 
   final IconData icon;
   final VoidCallback? onTap;
