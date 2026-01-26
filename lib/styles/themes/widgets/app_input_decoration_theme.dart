@@ -42,4 +42,31 @@ class AppInputDecorationTheme {
       borderSide: BorderSide(width: 1, color: AppColor.text),
     ),
   );
+
+  static InputDecorationTheme get darkData => InputDecorationTheme(
+    errorMaxLines: 3,
+    contentPadding: EdgeInsets.symmetric(horizontal: 15, vertical: 8),
+    hintStyle: TextStyle(fontSize: 14, color: Colors.grey[400]),
+    helperStyle: TextStyle(fontSize: 14, color: Colors.grey[300]),
+    errorStyle: TextStyle(fontSize: 12, color: AppColor.error),
+    fillColor: Colors.grey[800],
+    labelStyle: TextStyle(fontSize: 16, color: Colors.grey[300]),
+    filled: true,
+    focusedErrorBorder: OutlineInputBorder(
+      borderRadius: BorderRadius.circular(15),
+      borderSide: BorderSide(width: 0.8, color: AppColor.error),
+    ),
+    errorBorder: OutlineInputBorder(
+      borderRadius: BorderRadius.circular(15),
+      borderSide: BorderSide(width: 0.8, color: AppColor.error),
+    ),
+    enabledBorder: OutlineInputBorder(
+      borderRadius: BorderRadius.circular(15),
+      borderSide: BorderSide(width: 0.8, color: Colors.grey[600]!),
+    ),
+    focusedBorder: OutlineInputBorder(
+      borderRadius: BorderRadius.circular(15),
+      borderSide: BorderSide(width: 1, color: AppColor.primary),
+    ),
+  );
 }

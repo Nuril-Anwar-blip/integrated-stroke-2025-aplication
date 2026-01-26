@@ -21,4 +21,11 @@ class AppAppBarTheme {
     scrolledUnderElevation: 0,
     elevation: 0,
   );
+
+  static AppBarTheme get darkData => AppBarTheme(
+    backgroundColor: Colors.grey[900],
+    foregroundColor: Colors.white,
+    scrolledUnderElevation: 0,
+    elevation: 0,
+  );
 }

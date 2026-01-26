@@ -35,4 +35,20 @@ class AppTheme {
     splashFactory: InkRipple.splashFactory,
     dialogTheme: DialogThemeData(backgroundColor: AppColor.text),
   );
+
+  static ThemeData get darkData => ThemeData(
+    primarySwatch: AppColor.primary,
+    scaffoldBackgroundColor: Colors.grey[900],
+    brightness: Brightness.dark,
+    appBarTheme: AppAppBarTheme.darkData,
+    elevatedButtonTheme: AppElevatedButtonTheme.data,
+    outlinedButtonTheme: AppOutlinedButtonTheme.data,
+    progressIndicatorTheme: AppProgressIndicatorTheme.data,
+    textSelectionTheme: AppTextSelectionTheme.data,
+    inputDecorationTheme: AppInputDecorationTheme.darkData,
+    splashFactory: InkRipple.splashFactory,
+    dialogTheme: DialogThemeData(backgroundColor: Colors.grey[800]),
+    cardColor: Colors.grey[800],
+    dividerColor: Colors.grey[700],
+  );
 }

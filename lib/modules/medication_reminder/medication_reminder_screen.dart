@@ -2,12 +2,15 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:provider/provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:timezone/data/latest.dart' as tz;
 import 'package:timezone/timezone.dart' as tz;
 
+import '../../providers/theme_provider.dart';
 import 'medication_history_screen.dart';
 import 'models/medication_reminder.dart';
+import 'widgets/add_medication_dialog_v2.dart';
 
 class MedicationReminderScreen extends StatefulWidget {
   const MedicationReminderScreen({super.key});
@@ -164,40 +167,46 @@ class _MedicationReminderScreenState extends State<MedicationReminderScreen> {
 
     final result = await showDialog<Map<String, dynamic>>(
       context: context,
-      builder: (_) => const _AddMedicationDialog(),
+      builder: (_) => const AddMedicationDialogV2(),
     );
     if (result == null) return;
 
-    final TimeOfDay time = result['time'] as TimeOfDay;
-    final payload = {
-      'user_id': _userId,
-      'name': result['name'],
-      'dose': result['dose'],
-      'note': result['note'],
-      'time': _toDbTime(time),
-      'period': _resolvePeriod(time),
-      'taken': false,
-    };
+    final List<TimeOfDay> times = result['times'] as List<TimeOfDay>;
+    final String name = result['name'] as String;
+    final String dose = result['dose'] as String? ?? '';
+    final String note = result['note'] as String? ?? '';
 
     try {
-      final inserted =
-          await _supabase
-                  .from('medication_reminders')
-                  .insert(payload)
-                  .select()
-                  .single()
-              as Map<String, dynamic>;
-      await _scheduleNotification(
-        _notificationIdCounter++,
-        inserted['name'] as String,
-        time,
-      );
+      // Insert multiple reminders for each time
+      for (final time in times) {
+        final payload = {
+          'user_id': _userId,
+          'name': name,
+          'dose': dose,
+          'note': note,
+          'time': _toDbTime(time),
+          'period': _resolvePeriod(time),
+          'taken': false,
+        };
+
+        final inserted = await _supabase
+            .from('medication_reminders')
+            .insert(payload)
+            .select()
+            .single() as Map<String, dynamic>;
+
+        await _scheduleNotification(
+          _notificationIdCounter++,
+          inserted['name'] as String,
+          time,
+        );
+      }
 
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            'Pengingat ${inserted['name']} disetel pada ${time.format(context)}',
+            'Pengingat $name disetel untuk ${times.length} waktu',
           ),
         ),
       );
@@ -280,7 +289,7 @@ class _MedicationReminderScreenState extends State<MedicationReminderScreen> {
       appBar: AppBar(
         elevation: 0,
         backgroundColor: Colors.transparent,
-        foregroundColor: Colors.teal.shade900,
+        foregroundColor: Colors.white,
         flexibleSpace: Container(
           decoration: BoxDecoration(
             gradient: LinearGradient(
@@ -292,6 +301,37 @@ class _MedicationReminderScreenState extends State<MedicationReminderScreen> {
         ),
         title: const Text('Pengingat Obat'),
         actions: [
+          // Theme Toggle
+          Consumer<ThemeProvider>(
+            builder: (context, themeProvider, _) {
+              return IconButton(
+                icon: Icon(
+                  themeProvider.isDarkMode
+                      ? Icons.light_mode_rounded
+                      : Icons.dark_mode_rounded,
+                  color: Colors.white,
+                ),
+                tooltip: themeProvider.isDarkMode
+                    ? 'Mode Terang'
+                    : 'Mode Gelap',
+                onPressed: () {
+                  themeProvider.toggleTheme();
+                },
+              );
+            },
+          ),
+          // Language Toggle
+          IconButton(
+            icon: const Icon(Icons.language_rounded, color: Colors.white),
+            tooltip: 'Ubah Bahasa',
+            onPressed: () {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Fitur perubahan bahasa akan segera hadir'),
+                ),
+              );
+            },
+          ),
           IconButton(
             icon: const Icon(Icons.history_rounded, color: Colors.white),
             tooltip: 'Riwayat Pengingat',
@@ -304,11 +344,14 @@ class _MedicationReminderScreenState extends State<MedicationReminderScreen> {
           ),
         ],
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _addMedication,
-        backgroundColor: Colors.teal.shade500,
-        icon: const Icon(Icons.add),
-        label: const Text('Tambah Obat'),
+      floatingActionButton: Padding(
+        padding: EdgeInsets.only(bottom: MediaQuery.of(context).padding.bottom + 80),
+        child: FloatingActionButton.extended(
+          onPressed: _addMedication,
+          backgroundColor: Colors.teal.shade500,
+          icon: const Icon(Icons.add),
+          label: const Text('Tambah Obat'),
+        ),
       ),
       body: Container(
         decoration: BoxDecoration(
@@ -334,7 +377,7 @@ class _MedicationReminderScreenState extends State<MedicationReminderScreen> {
             final completed = reminders.where((r) => r.taken).length;
 
             return ListView(
-              padding: const EdgeInsets.fromLTRB(16, 18, 16, 140),
+              padding: EdgeInsets.fromLTRB(16, 18, 16, MediaQuery.of(context).padding.bottom + 100),
               children: [
                 _SummaryCard(completed: completed, total: total),
                 const SizedBox(height: 14),

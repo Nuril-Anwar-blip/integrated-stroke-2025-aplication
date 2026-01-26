@@ -2,10 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:integrated_stroke/modules/auth/widget/splash_screen.dart';
 import 'package:intl/date_symbol_data_local.dart'; // Import untuk inisialisasi locale
+import 'package:provider/provider.dart';
 
 import 'global.dart';
 import 'modules/auth/login_screen.dart';
 import 'modules/dashboard/dashboard_screen.dart';
+import 'providers/theme_provider.dart';
 import 'services/local/auth_local_service.dart';
 import 'styles/themes/app_theme.dart';
 
@@ -32,11 +34,20 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Integrated Stroke',
-      theme: AppTheme.data,
-      debugShowCheckedModeBanner: false, // Menghilangkan banner debug
-      home: homeOverride ?? const SplashScreen(),
+    return ChangeNotifierProvider(
+      create: (_) => ThemeProvider(),
+      child: Consumer<ThemeProvider>(
+        builder: (context, themeProvider, _) {
+          return MaterialApp(
+            title: 'Integrated Stroke',
+            theme: AppTheme.data,
+            darkTheme: AppTheme.darkData,
+            themeMode: themeProvider.themeMode,
+            debugShowCheckedModeBanner: false,
+            home: homeOverride ?? const SplashScreen(),
+          );
+        },
+      ),
     );
   }
 }

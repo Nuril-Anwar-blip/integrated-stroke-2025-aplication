@@ -1,9 +1,12 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../supabase/supabase_client.dart';
 import '../../models/user_model.dart';
 import '../../extensions/user_model_extension.dart';
+import '../../providers/theme_provider.dart';
+import '../../widgets/app_bar_with_actions.dart';
 import 'edit_profile_screen.dart';
 import '../auth/login_screen.dart';
 import '../pairing_scanner/pairing_scanner_screen.dart';
@@ -185,11 +188,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
     return Scaffold(
       backgroundColor: Colors.grey[100],
-      appBar: AppBar(
-        title: const Text('Profil'),
-        backgroundColor: Colors.white,
-        foregroundColor: Colors.black87,
-        elevation: 1,
+      appBar: AppBarWithActions(
+        title: 'Profil',
+        showThemeToggle: false, // Already in profile actions
+        showLanguageToggle: false, // Already in profile actions
         actions: [
           IconButton(
             icon: const Icon(Icons.edit_note_rounded),
@@ -209,6 +211,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
               child: ListView(
                 physics: const BouncingScrollPhysics(
                   parent: AlwaysScrollableScrollPhysics(),
+                ),
+                padding: EdgeInsets.only(
+                  bottom: MediaQuery.of(context).padding.bottom + 100,
                 ),
                 children: [
                   const SizedBox(height: 12),
@@ -310,6 +315,40 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               context,
                               MaterialPageRoute(
                                 builder: (_) => const PairingScannerScreen(),
+                              ),
+                            );
+                          },
+                        ),
+                        const SizedBox(height: 12),
+                        Consumer<ThemeProvider>(
+                          builder: (context, themeProvider, _) {
+                            return _ProfileActionButton(
+                              icon: themeProvider.isDarkMode
+                                  ? Icons.light_mode_rounded
+                                  : Icons.dark_mode_rounded,
+                              title: themeProvider.isDarkMode
+                                  ? 'Mode Terang'
+                                  : 'Mode Gelap',
+                              subtitle: 'Ubah tema aplikasi',
+                              backgroundColor: Colors.blue.shade50,
+                              foregroundColor: Colors.blue.shade700,
+                              onTap: () {
+                                themeProvider.toggleTheme();
+                              },
+                            );
+                          },
+                        ),
+                        const SizedBox(height: 12),
+                        _ProfileActionButton(
+                          icon: Icons.language_rounded,
+                          title: 'Bahasa',
+                          subtitle: 'Ubah bahasa aplikasi (Segera hadir)',
+                          backgroundColor: Colors.orange.shade50,
+                          foregroundColor: Colors.orange.shade700,
+                          onTap: () {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('Fitur perubahan bahasa akan segera hadir'),
                               ),
                             );
                           },

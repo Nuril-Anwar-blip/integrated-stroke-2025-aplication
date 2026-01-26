@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../models/post_model.dart';
+import '../../../widgets/app_bar_with_actions.dart';
 import 'create_post_screen.dart';
 import 'post_detail_screen.dart';
 import 'widgets/post_card.dart';
@@ -228,14 +229,10 @@ class _CommunityScreenState extends State<CommunityScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.grey[100],
-      appBar: AppBar(
-        title: const Text(
-          'Komunitas',
-          style: TextStyle(fontWeight: FontWeight.w700),
-        ),
-        backgroundColor: Colors.white,
-        foregroundColor: Colors.black87,
-        elevation: 0.3,
+      appBar: AppBarWithActions(
+        title: 'Komunitas',
+        showThemeToggle: true,
+        showLanguageToggle: true,
         actions: [
           if (_isRefreshing)
             const Padding(
@@ -253,10 +250,13 @@ class _CommunityScreenState extends State<CommunityScreen> {
           ),
         ],
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _navigateToCreatePost,
-        icon: const Icon(Icons.edit_rounded),
-        label: const Text('Bagikan'),
+      floatingActionButton: Padding(
+        padding: EdgeInsets.only(bottom: MediaQuery.of(context).padding.bottom + 80),
+        child: FloatingActionButton.extended(
+          onPressed: _navigateToCreatePost,
+          icon: const Icon(Icons.edit_rounded),
+          label: const Text('Bagikan'),
+        ),
       ),
       body: AnimatedSwitcher(
         duration: const Duration(milliseconds: 250),
@@ -272,7 +272,7 @@ class _CommunityScreenState extends State<CommunityScreen> {
       onRefresh: () => _refreshPosts(),
       child: ListView(
         physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 120),
+        padding: EdgeInsets.fromLTRB(16, 16, 16, MediaQuery.of(context).padding.bottom + 100),
         children: [
           _CommunityHeroCard(
             postCount: _posts.length,

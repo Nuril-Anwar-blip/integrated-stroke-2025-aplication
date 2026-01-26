@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import '../../providers/theme_provider.dart';
+import '../../widgets/app_bar_with_actions.dart';
 
 class ExercisePlan {
   ExercisePlan({
@@ -275,14 +278,13 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
 
     return Scaffold(
       backgroundColor: Colors.grey[100],
-      appBar: AppBar(
-        title: const Text('Latihan Pemulihan'),
-        foregroundColor: Colors.black87,
-        backgroundColor: Colors.white,
-        elevation: 0.5,
+      appBar: AppBarWithActions(
+        title: 'Latihan Pemulihan',
+        showThemeToggle: true,
+        showLanguageToggle: true,
       ),
       body: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
+        padding: EdgeInsets.fromLTRB(16, 16, 16, MediaQuery.of(context).padding.bottom + 100),
         children: [
           _ExerciseSummaryCard(
             completed: completedCount,

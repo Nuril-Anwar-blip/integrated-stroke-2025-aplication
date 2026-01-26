@@ -1,15 +1,28 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:integrated_stroke/modules/emergency_location/emergency_location_screen.dart';
-import 'package:integrated_stroke/styles/colors/app_color.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+
+// pages sesuai project kamu
 import 'package:integrated_stroke/modules/community/community_screen.dart';
 import 'package:integrated_stroke/modules/consultation/patient_chat_dashboard_screen.dart';
 import 'package:integrated_stroke/modules/profile/profile_screen.dart';
-import 'package:integrated_stroke/modules/medication_reminder/medication_reminder_screen.dart';
-import 'package:integrated_stroke/modules/navbar/navbar.dart';
-import 'package:integrated_stroke/modules/exercise/exercise_screen.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:integrated_stroke/widgets/floating_navbar.dart';
 
+// fitur home
+import 'package:integrated_stroke/modules/emergency_location/emergency_location_screen.dart';
+import 'package:integrated_stroke/modules/exercise/exercise_screen.dart';
+import 'package:integrated_stroke/modules/medication_reminder/medication_reminder_screen.dart';
+import 'package:integrated_stroke/modules/dashboard/widgets/enhanced_home_tab.dart';
+
+/// ===============================================================
+/// DASHBOARD SCREEN
+/// ===============================================================
+/// - memakai CustomNavbar pill style
+/// - Tab Profile menampilkan avatar user
+/// - SOS tidak di navbar, tetapi ada pada Home
+/// - Card Home: profile + detak jantung realtime dijadikan 1
+/// - Ada edukasi stroke (FAST)
+/// ===============================================================
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
 
@@ -18,14 +31,40 @@ class DashboardScreen extends StatefulWidget {
 }
 
 class _DashboardScreenState extends State<DashboardScreen> {
-  int _currentIndex = 0;
+  final _supabase = Supabase.instance.client;
 
-  final List<Widget> _pages = const [
-    _HomeTab(),
-    CommunityScreen(),
-    PatientChatDashboardScreen(),
-    ProfileScreen(),
+  int _currentIndex = 0;
+  String? _photoUrl;
+
+  final List<Widget> _pages = [
+    const EnhancedHomeTab(),
+    const CommunityScreen(),
+    const PatientChatDashboardScreen(),
+    const ProfileScreen(),
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadPhotoForNavbar();
+  }
+
+  /// untuk navbar -> profile icon pakai foto
+  Future<void> _loadPhotoForNavbar() async {
+    final userId = _supabase.auth.currentUser?.id;
+    if (userId == null) return;
+
+    try {
+      final data = await _supabase
+          .from('users')
+          .select('photo_url')
+          .eq('id', userId)
+          .maybeSingle();
+
+      if (!mounted || data == null) return;
+      setState(() => _photoUrl = data['photo_url']?.toString());
+    } catch (_) {}
+  }
 
   void _onNavTap(int index) {
     if (!mounted) return;
@@ -34,17 +73,26 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return CustomNavbar(
+    return FloatingNavbar(
       currentIndex: _currentIndex,
       onTap: _onNavTap,
+      photoUrl: _photoUrl,
+      onSosTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => const EmergencyLocationScreen(),
+          ),
+        );
+      },
       body: SafeArea(child: _pages[_currentIndex]),
     );
   }
 }
 
-/// ===============================
-/// HOME TAB — REALTIME SENSOR DATA
-/// ===============================
+/// ===============================================================
+/// HOME TAB (Realtime Heart Rate + Profile Card)
+/// ===============================================================
 class _HomeTab extends StatefulWidget {
   const _HomeTab();
 
@@ -57,32 +105,35 @@ class _HomeTabState extends State<_HomeTab> {
 
   late final StreamController<_DashboardStats> _statsController;
   late final Stream<_DashboardStats> _statsStream;
+
   RealtimeChannel? _sensorChannel;
   String? _userId;
-  _DashboardStats _currentStats = _DashboardStats.empty();
+
   String _userName = 'Integrated Stroke';
   String? _photoUrl;
+
+  _DashboardStats _currentStats = _DashboardStats.empty();
 
   @override
   void initState() {
     super.initState();
     _statsController = StreamController<_DashboardStats>.broadcast();
     _statsStream = _statsController.stream;
-    _initializeRealtimeListener();
+    _init();
   }
 
-  Future<void> _initializeRealtimeListener() async {
+  Future<void> _init() async {
     _userId = _supabase.auth.currentUser?.id;
-    if (_userId == null) {
-      _statsController.add(_DashboardStats.empty());
-      return;
-    }
+    if (_userId == null) return;
 
-    // Ambil data awal
-    await _fetchLatestHeartRate();
     await _loadUserProfile();
+    await _fetchLatestHeartRate();
+    _listenRealtime();
+  }
 
-    // Listen untuk perubahan data baru (realtime)
+  void _listenRealtime() {
+    if (_userId == null) return;
+
     _sensorChannel = _supabase.channel('realtime_sensor_data_$_userId')
       ..onPostgresChanges(
         event: PostgresChangeEvent.insert,
@@ -94,73 +145,55 @@ class _HomeTabState extends State<_HomeTab> {
           value: _userId!,
         ),
         callback: (payload) async {
-          final newRow = payload.newRecord;
-          if (newRow['heart_rate'] != null) {
-            final newHeartRate = newRow['heart_rate'].toString();
-            _updateStats(heartRate: '$newHeartRate bpm');
-          } else {
-            await _fetchLatestHeartRate();
+          final row = payload.newRecord;
+          if (row['heart_rate'] != null) {
+            _updateStats(heartRate: '${row['heart_rate']} bpm');
           }
         },
       )
       ..subscribe();
-
-    debugPrint("✅ Realtime listener aktif untuk user $_userId");
-  }
-
-  /// Ambil data terbaru (backup jika belum ada event realtime)
-  Future<void> _fetchLatestHeartRate() async {
-    if (_userId == null) return;
-    try {
-      final response = await _supabase
-          .from('sensor_data')
-          .select('heart_rate, value, type')
-          .eq('user_id', _userId!)
-          .order('timestamp', ascending: false)
-          .limit(1)
-          .maybeSingle();
-
-      final hrLabel = _formatHeartRate(response);
-      if (hrLabel != null) {
-        _updateStats(heartRate: hrLabel);
-      }
-    } catch (e) {
-      debugPrint('❌ Failed to fetch heart rate: $e');
-    }
-  }
-
-  /// Format nilai heart rate agar tampil rapi
-  String? _formatHeartRate(Map<String, dynamic>? response) {
-    if (response == null) return null;
-    final hr = response['heart_rate'];
-    if (hr == null) return null;
-    return "$hr bpm";
   }
 
   Future<void> _loadUserProfile() async {
     if (_userId == null) return;
+
     try {
       final data = await _supabase
           .from('users')
           .select('full_name, photo_url')
           .eq('id', _userId!)
           .maybeSingle();
+
       if (!mounted || data == null) return;
+
       setState(() {
         final name = data['full_name']?.toString() ?? '';
         _userName = name.isNotEmpty ? name : 'Integrated Stroke';
         _photoUrl = data['photo_url']?.toString();
       });
-    } catch (e) {
-      debugPrint('Failed to load profile: $e');
-    }
+    } catch (_) {}
   }
 
-  /// Update data di StreamController agar UI auto-refresh
-  void _updateStats({String? heartRate, String? medication}) {
+  Future<void> _fetchLatestHeartRate() async {
+    if (_userId == null) return;
+
+    try {
+      final response = await _supabase
+          .from('sensor_data')
+          .select('heart_rate')
+          .eq('user_id', _userId!)
+          .order('timestamp', ascending: false)
+          .limit(1)
+          .maybeSingle();
+
+      final hr = response?['heart_rate'];
+      if (hr != null) _updateStats(heartRate: '$hr bpm');
+    } catch (_) {}
+  }
+
+  void _updateStats({String? heartRate}) {
     _currentStats = _DashboardStats(
       heartRate: heartRate ?? _currentStats.heartRate,
-      medicationFrequency: medication ?? _currentStats.medicationFrequency,
     );
     _statsController.add(_currentStats);
   }
@@ -168,40 +201,75 @@ class _HomeTabState extends State<_HomeTab> {
   @override
   void dispose() {
     _sensorChannel?.unsubscribe();
-    if (_sensorChannel != null) {
-      _supabase.removeChannel(_sensorChannel!);
-    }
+    if (_sensorChannel != null) _supabase.removeChannel(_sensorChannel!);
     _statsController.close();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    final bottom = MediaQuery.of(context).padding.bottom + 72;
+    final bottom = MediaQuery.of(context).padding.bottom + 90;
 
     return ListView(
-      padding: EdgeInsets.fromLTRB(16, 8, 16, bottom),
+      padding: EdgeInsets.fromLTRB(16, 14, 16, bottom),
       children: [
-        _TopBar(name: _userName, photoUrl: _photoUrl),
-        const SizedBox(height: 14),
         StreamBuilder<_DashboardStats>(
           stream: _statsStream,
           builder: (context, snapshot) {
             final stats = snapshot.data ?? _DashboardStats.empty();
-            return Row(
-              children: [
-                Expanded(
-                  child: _StatCard(
-                    title: 'Detak Jantung',
-                    value: stats.heartRate,
-                    color: Colors.redAccent,
-                  ),
-                ),
-              ],
+            final bpm = _parseHeartRate(stats.heartRate);
+
+            return _ProfileHeartRateCard(
+              name: _userName,
+              photoUrl: _photoUrl,
+              heartRate: stats.heartRate,
+              status: _heartRateStatus(bpm),
             );
           },
         ),
+
+        const SizedBox(height: 16),
+
+        /// edukasi stroke
+        const _SectionTitle('Edukasi Stroke'),
+        const SizedBox(height: 10),
+        const _StrokeEducationCard(),
+
         const SizedBox(height: 18),
+
+        /// SOS dimasukkan Home (bukan navbar)
+        const _SectionTitle('Akses Cepat'),
+        const SizedBox(height: 10),
+        Row(
+          children: [
+            Expanded(
+              child: _QuickActionChip(
+                icon: Icons.sos_rounded,
+                label: 'SOS',
+                color: Colors.redAccent,
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const EmergencyLocationScreen()),
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: _QuickActionChip(
+                icon: Icons.chat_bubble_outline,
+                label: 'Chat Apoteker',
+                color: Colors.teal,
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const PatientChatDashboardScreen()),
+                ),
+              ),
+            ),
+          ],
+        ),
+
+        const SizedBox(height: 18),
+
         const _SectionTitle('Fitur Utama'),
         const SizedBox(height: 10),
         GridView.count(
@@ -210,57 +278,46 @@ class _HomeTabState extends State<_HomeTab> {
           crossAxisCount: 2,
           crossAxisSpacing: 12,
           mainAxisSpacing: 12,
-          childAspectRatio: 1.1,
+          childAspectRatio: 1.08,
           children: [
-            _FeatureCard(
+            _FeatureCardV2(
               icon: Icons.medication,
-              label: 'Obat',
+              label: 'Pengingat Obat',
+              desc: 'Atur jadwal minum obat',
               color: Colors.indigo,
               onTap: () => Navigator.push(
                 context,
-                MaterialPageRoute(
-                  builder: (_) => const MedicationReminderScreen(),
-                ),
+                MaterialPageRoute(builder: (_) => const MedicationReminderScreen()),
               ),
             ),
-            _FeatureCard(
+            _FeatureCardV2(
               icon: Icons.fitness_center,
               label: 'Latihan',
+              desc: 'Rehabilitasi harian',
               color: Colors.purple,
               onTap: () => Navigator.push(
                 context,
                 MaterialPageRoute(builder: (_) => const ExerciseScreen()),
               ),
             ),
-            _FeatureCard(
+            _FeatureCardV2(
               icon: Icons.groups,
               label: 'Komunitas',
+              desc: 'Diskusi & dukungan',
               color: Colors.deepOrange,
               onTap: () => Navigator.push(
                 context,
                 MaterialPageRoute(builder: (_) => const CommunityScreen()),
               ),
             ),
-            _FeatureCard(
+            _FeatureCardV2(
               icon: Icons.chat,
-              label: 'Chat Apoteker',
+              label: 'Konsultasi',
+              desc: 'Chat dengan apoteker',
               color: Colors.teal,
               onTap: () => Navigator.push(
                 context,
-                MaterialPageRoute(
-                  builder: (_) => const PatientChatDashboardScreen(),
-                ),
-              ),
-            ),
-            _FeatureCard(
-              icon: Icons.location_on,
-              label: 'Lokasi Darurat',
-              color: Colors.redAccent,
-              onTap: () => Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => const EmergencyLocationScreen(),
-                ),
+                MaterialPageRoute(builder: (_) => const PatientChatDashboardScreen()),
               ),
             ),
           ],
@@ -268,106 +325,146 @@ class _HomeTabState extends State<_HomeTab> {
       ],
     );
   }
-}
 
-/// ======== MODEL =========
-class _DashboardStats {
-  final String heartRate;
-  final String medicationFrequency;
-
-  const _DashboardStats({
-    required this.heartRate,
-    required this.medicationFrequency,
-  });
-
-  factory _DashboardStats.fromMap(Map<String, dynamic> map) {
-    final hr = map['heart_rate'];
-    final heartRateValue = hr == null ? '—' : '${hr.toString()} bpm';
-    return _DashboardStats(heartRate: heartRateValue, medicationFrequency: '—');
+  int? _parseHeartRate(String hrText) {
+    final m = RegExp(r'(\d+)').firstMatch(hrText);
+    if (m == null) return null;
+    return int.tryParse(m.group(1) ?? '');
   }
 
-  factory _DashboardStats.empty() =>
-      const _DashboardStats(heartRate: '—', medicationFrequency: '—');
+  String _heartRateStatus(int? bpm) {
+    if (bpm == null) return 'Belum ada data';
+    if (bpm < 60) return 'Rendah';
+    if (bpm <= 100) return 'Normal';
+    return 'Tinggi';
+  }
 }
 
-/// ======== UI COMPONENTS =========
-class _TopBar extends StatelessWidget {
-  const _TopBar({required this.name, this.photoUrl});
+/// ======================
+/// MODEL
+/// ======================
+class _DashboardStats {
+  final String heartRate;
+  const _DashboardStats({required this.heartRate});
+  factory _DashboardStats.empty() => const _DashboardStats(heartRate: '—');
+}
+
+/// ======================
+/// UI COMPONENTS
+/// ======================
+
+class _ProfileHeartRateCard extends StatelessWidget {
+  const _ProfileHeartRateCard({
+    required this.name,
+    required this.photoUrl,
+    required this.heartRate,
+    required this.status,
+  });
 
   final String name;
   final String? photoUrl;
+  final String heartRate;
+  final String status;
 
-  String get _initial =>
-      name.trim().isNotEmpty ? name.trim().substring(0, 1).toUpperCase() : 'I';
+  String get _initial => name.isNotEmpty ? name.substring(0, 1).toUpperCase() : 'I';
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
     return Container(
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(18),
         gradient: LinearGradient(
-          colors: [Colors.teal.shade400, Colors.teal.shade200],
+          colors: [
+            theme.primaryColor.withOpacity(0.92),
+            Colors.teal.withOpacity(0.55),
+          ],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
-        borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Colors.teal.withOpacity(0.15),
-            blurRadius: 18,
-            offset: const Offset(0, 10),
+            color: theme.primaryColor.withOpacity(0.18),
+            blurRadius: 22,
+            offset: const Offset(0, 14),
           ),
         ],
       ),
       child: Row(
         children: [
           CircleAvatar(
-            radius: 26,
-            backgroundColor: Colors.white,
+            radius: 28,
+            backgroundColor: Colors.white.withOpacity(0.92),
             backgroundImage: (photoUrl != null && photoUrl!.isNotEmpty)
                 ? NetworkImage(photoUrl!)
                 : null,
             child: (photoUrl == null || photoUrl!.isEmpty)
                 ? Text(
-                    _initial,
-                    style: const TextStyle(
-                      color: Colors.teal,
-                      fontWeight: FontWeight.w700,
-                      fontSize: 18,
-                    ),
-                  )
+              _initial,
+              style: TextStyle(
+                color: theme.primaryColor,
+                fontWeight: FontWeight.w900,
+                fontSize: 18,
+              ),
+            )
                 : null,
           ),
-          const SizedBox(width: 14),
+          const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Selamat Datang',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: Colors.white.withOpacity(0.85),
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
                   name,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
-                    fontSize: 19,
-                    fontWeight: FontWeight.w800,
                     color: Colors.white,
+                    fontWeight: FontWeight.w900,
+                    fontSize: 18,
                   ),
+                ),
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    const Icon(Icons.monitor_heart, color: Colors.white, size: 18),
+                    const SizedBox(width: 8),
+                    Text(
+                      heartRate,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w900,
+                        fontSize: 16,
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.18),
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      child: Text(
+                        status,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w800,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
           ),
           Container(
-            padding: const EdgeInsets.all(8),
+            width: 44,
+            height: 44,
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.2),
+              color: Colors.white.withOpacity(0.18),
               shape: BoxShape.circle,
             ),
             child: const Icon(Icons.notifications_none, color: Colors.white),
@@ -378,33 +475,90 @@ class _TopBar extends StatelessWidget {
   }
 }
 
-class _Tag extends StatelessWidget {
-  const _Tag({required this.label, required this.icon, required this.color});
-  final String label;
-  final IconData icon;
-  final Color color;
+class _StrokeEducationCard extends StatelessWidget {
+  const _StrokeEducationCard();
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.18),
-        borderRadius: BorderRadius.circular(12),
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.grey.withOpacity(0.15)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 12,
+            offset: const Offset(0, 7),
+          ),
+        ],
       ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, size: 14, color: color),
-          const SizedBox(width: 6),
+          Row(
+            children: [
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: Colors.redAccent.withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: const Icon(Icons.health_and_safety, color: Colors.redAccent),
+              ),
+              const SizedBox(width: 12),
+              const Expanded(
+                child: Text(
+                  'Apa itu Stroke?',
+                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.w900),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
           Text(
-            label,
-            style: TextStyle(
-              color: color,
-              fontWeight: FontWeight.w700,
-              fontSize: 12,
+            'Stroke adalah kondisi saat aliran darah ke otak terganggu (sumbatan/pecah pembuluh). '
+                'Penanganan cepat dapat mencegah kerusakan otak permanen.',
+            style: TextStyle(color: Colors.grey[700], height: 1.35),
+          ),
+          const SizedBox(height: 12),
+          const Text('Kenali tanda FAST:', style: TextStyle(fontWeight: FontWeight.w900)),
+          const SizedBox(height: 8),
+          _fastItem('F', 'Face drooping: wajah mencong'),
+          _fastItem('A', 'Arm weakness: lengan melemah'),
+          _fastItem('S', 'Speech difficulty: bicara pelo'),
+          _fastItem('T', 'Time: segera cari bantuan medis'),
+        ],
+      ),
+    );
+  }
+
+  static Widget _fastItem(String key, String text) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Row(
+        children: [
+          Container(
+            width: 26,
+            height: 26,
+            decoration: BoxDecoration(
+              color: Colors.teal.withOpacity(0.12),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Center(
+              child: Text(
+                key,
+                style: const TextStyle(
+                  fontWeight: FontWeight.w900,
+                  color: Colors.teal,
+                ),
+              ),
             ),
           ),
+          const SizedBox(width: 10),
+          Expanded(child: Text(text, style: TextStyle(color: Colors.grey[800]))),
         ],
       ),
     );
@@ -413,114 +567,129 @@ class _Tag extends StatelessWidget {
 
 class _SectionTitle extends StatelessWidget {
   final String text;
-  const _SectionTitle(this.text, {super.key});
-  @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.symmetric(vertical: 4),
-    child: Text(
-      text,
-      style: const TextStyle(
-        fontSize: 16,
-        fontWeight: FontWeight.w700,
-        color: Colors.black87,
-      ),
-    ),
-  );
-}
+  const _SectionTitle(this.text);
 
-class _StatCard extends StatelessWidget {
-  final String title, value;
-  final Color color;
-  const _StatCard({
-    required this.title,
-    required this.value,
-    required this.color,
-  });
-  const _StatCard.skeleton() : title = '', value = '', color = Colors.grey;
   @override
   Widget build(BuildContext context) {
-    return Container(
-      constraints: const BoxConstraints(minHeight: 80, maxHeight: 92),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.04),
-            blurRadius: 8,
-            offset: const Offset(0, 3),
-          ),
-        ],
-      ),
-      padding: const EdgeInsets.all(12),
-      child: Row(
-        children: [
-          CircleAvatar(
-            radius: 26,
-            backgroundColor: color.withOpacity(0.12),
-            child: Icon(Icons.monitor_heart, color: color),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: const TextStyle(
-                    color: Colors.black54,
-                    fontSize: 12,
-                    height: 1.1,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  value,
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                    height: 1.1,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Text(
+        text,
+        style: const TextStyle(
+          fontSize: 16,
+          fontWeight: FontWeight.w900,
+          color: Colors.black87,
+        ),
       ),
     );
   }
 }
 
-class _FeatureCard extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final Color color;
-  final VoidCallback onTap;
-  const _FeatureCard({
+class _QuickActionChip extends StatelessWidget {
+  const _QuickActionChip({
     required this.icon,
     required this.label,
     required this.color,
     required this.onTap,
   });
+
+  final IconData icon;
+  final String label;
+  final Color color;
+  final VoidCallback onTap;
+
   @override
   Widget build(BuildContext context) {
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(12),
+      borderRadius: BorderRadius.circular(14),
       child: Container(
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(12),
-          gradient: LinearGradient(
-            colors: [color.withOpacity(0.95), color.withOpacity(0.7)],
-          ),
-        ),
         padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: Colors.grey.withOpacity(0.15)),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.04),
+              blurRadius: 10,
+              offset: const Offset(0, 6),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(
+                color: color.withOpacity(0.10),
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Icon(icon, color: color),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                label,
+                style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 13),
+              ),
+            ),
+            Icon(Icons.arrow_forward_ios_rounded, size: 16, color: Colors.grey[400]),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _FeatureCardV2 extends StatelessWidget {
+  const _FeatureCardV2({
+    required this.icon,
+    required this.label,
+    required this.desc,
+    required this.color,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String label;
+  final String desc;
+  final Color color;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(16),
+      child: Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(16),
+          gradient: LinearGradient(
+            colors: [color.withOpacity(0.95), color.withOpacity(0.75)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: color.withOpacity(0.20),
+              blurRadius: 18,
+              offset: const Offset(0, 10),
+            ),
+          ],
+        ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            CircleAvatar(
-              backgroundColor: Colors.white.withOpacity(0.9),
+            Container(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.92),
+                borderRadius: BorderRadius.circular(14),
+              ),
               child: Icon(icon, color: color),
             ),
             const Spacer(),
@@ -528,8 +697,23 @@ class _FeatureCard extends StatelessWidget {
               label,
               style: const TextStyle(
                 color: Colors.white,
-                fontWeight: FontWeight.bold,
+                fontWeight: FontWeight.w900,
+                fontSize: 15,
               ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+            const SizedBox(height: 6),
+            Text(
+              desc,
+              style: TextStyle(
+                color: Colors.white.withOpacity(0.9),
+                fontWeight: FontWeight.w600,
+                fontSize: 12,
+                height: 1.2,
+              ),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
             ),
           ],
         ),

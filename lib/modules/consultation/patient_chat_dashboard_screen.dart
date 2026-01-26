@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../widgets/app_bar_with_actions.dart';
 import 'consultation_screen.dart';
 // import '../auth/login_screen.dart';
 
@@ -368,14 +369,10 @@ class _PatientChatDashboardScreenState
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.grey[100],
-      appBar: AppBar(
-        elevation: 0,
-        backgroundColor: Colors.white,
-        foregroundColor: Colors.black87,
-        title: const Text(
-          'Konsultasi Saya',
-          style: TextStyle(fontWeight: FontWeight.w700),
-        ),
+      appBar: AppBarWithActions(
+        title: 'Konsultasi Saya',
+        showThemeToggle: true,
+        showLanguageToggle: true,
         actions: [
           if (_isRefreshing)
             const Padding(
@@ -395,20 +392,23 @@ class _PatientChatDashboardScreenState
           ),
         ],
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _isStartingChat ? null : _showPharmacistPicker,
-        backgroundColor: Colors.teal.shade600,
-        icon: Icon(
-          _isStartingChat ? Icons.hourglass_top : Icons.add_comment_rounded,
+      floatingActionButton: Padding(
+        padding: EdgeInsets.only(bottom: MediaQuery.of(context).padding.bottom + 80),
+        child: FloatingActionButton.extended(
+          onPressed: _isStartingChat ? null : _showPharmacistPicker,
+          backgroundColor: Colors.teal.shade600,
+          icon: Icon(
+            _isStartingChat ? Icons.hourglass_top : Icons.add_comment_rounded,
+          ),
+          label: Text(_isStartingChat ? 'Menghubungkan...' : 'Cari Apoteker'),
         ),
-        label: Text(_isStartingChat ? 'Menghubungkan...' : 'Cari Apoteker'),
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : RefreshIndicator(
               onRefresh: () => _loadRooms(showSpinner: false),
               child: ListView(
-                padding: const EdgeInsets.fromLTRB(16, 16, 16, 120),
+                padding: EdgeInsets.fromLTRB(16, 16, 16, MediaQuery.of(context).padding.bottom + 100),
                 children: [
                   _PatientHeroCard(totalRooms: _rooms.length),
                   const SizedBox(height: 16),
